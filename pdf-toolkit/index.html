@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Toolkit — merge, split and organise PDFs in your browser</title>
+
+<!-- Poppins for headings, Inter for body text -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   1. DESIGN TOKENS  —  change these to re-skin the whole app
+   ============================================================ */
+:root{
+  --charcoal:#0E0E10;      /* text, headers */
+  --amber:#F5B301;         /* primary buttons, active states */
+  --amber-dark:#D89C00;
+  --cream:#F4EDE2;         /* page background */
+  --rust:#E2582B;          /* destructive actions */
+  --white:#FFFFFF;
+  --muted:#6B6B72;
+  --line:#E6DFD3;
+  --radius:12px;
+  --shadow:0 1px 2px rgba(14,14,16,.05), 0 8px 24px rgba(14,14,16,.06);
+  --shadow-lg:0 12px 40px rgba(14,14,16,.14);
+  --thumb:170px;           /* thumbnail width, driven by the zoom slider */
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--cream);
+  color:var(--charcoal);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:Poppins,Inter,sans-serif;margin:0;letter-spacing:-.01em}
+button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px;border-radius:6px}
+
+/* ============================================================
+   2. HEADER + STICKY TOOLBAR
+   ============================================================ */
+.masthead{
+  background:var(--white);
+  border-bottom:1px solid var(--line);
+  padding:14px 22px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-mark{
+  width:34px;height:34px;border-radius:9px;background:var(--charcoal);
+  display:grid;place-items:center;color:var(--amber);font-weight:700;font-size:13px;
+  font-family:Poppins,sans-serif;
+}
+.logo h1{font-size:18px;font-weight:600}
+.badge{
+  margin-left:auto;
+  background:#F0FBF3;border:1px solid #BFE6CC;color:#1B6B3A;
+  padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;
+}
+
+.toolbar{
+  position:sticky;top:0;z-index:40;
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+  padding:12px 22px;
+  display:none;                 /* revealed once pages exist */
+  flex-direction:column;gap:10px;
+}
+.toolbar.on{display:flex}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.spacer{flex:1}
+.divider{width:1px;height:24px;background:var(--line);margin:0 4px}
+
+/* ---- buttons ---- */
+.btn{
+  border:1px solid var(--line);background:var(--white);
+  padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:500;font-size:14px;
+  transition:transform .12s ease, box-shadow .12s ease, background .12s ease, border-color .12s ease;
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+}
+.btn:hover{background:#FBF7F0;border-color:#D8CFC0;transform:translateY(-1px);box-shadow:var(--shadow)}
+.btn:active{transform:translateY(0)}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:var(--charcoal);font-weight:600}
+.btn.primary:hover{background:var(--amber-dark);border-color:var(--amber-dark)}
+.btn.danger{background:var(--rust);border-color:var(--rust);color:#fff}
+.btn.danger:hover{background:#C7461D;border-color:#C7461D}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ghost:hover{background:#F1EADF;border-color:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+.btn.sm{padding:6px 11px;font-size:13px}
+
+.counter{font-size:13.5px;color:var(--muted);font-weight:500;white-space:nowrap}
+.counter b{color:var(--charcoal)}
+
+.zoom{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)}
+.zoom input[type=range]{width:132px;accent-color:var(--amber)}
+
+/* ============================================================
+   3. LAYOUT
+   ============================================================ */
+main{max-width:1400px;margin:0 auto;padding:26px 22px 90px}
+.section-title{font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600;margin:0 0 12px}
+
+/* ---- drop zone ---- */
+.dropzone{
+  background:var(--white);border:2px dashed #D9CEBB;border-radius:20px;
+  padding:56px 26px;text-align:center;cursor:pointer;
+  transition:border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.dropzone:hover{border-color:var(--amber);background:#FFFDF7}
+.dropzone.hot{border-color:var(--amber);background:#FFF9E8;transform:scale(1.005)}
+.dropzone h2{font-size:22px;margin-bottom:8px}
+.dropzone p{color:var(--muted);margin:0 0 20px;font-size:14.5px}
+.dropzone svg{margin-bottom:18px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:16px}
+
+/* ---- uploaded file cards ---- */
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:26px}
+.file-card{
+  background:var(--white);border:1px solid var(--line);border-radius:var(--radius);
+  padding:13px 14px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);
+}
+.file-icon{width:36px;height:36px;border-radius:9px;background:#FDF3D6;display:grid;place-items:center;flex:none}
+.file-meta{min-width:0;flex:1}
+.file-meta .nm{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-meta .sub{font-size:12.5px;color:var(--muted)}
+.x{
+  border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;
+  width:30px;height:30px;border-radius:8px;flex:none;transition:.14s
+}
+.x:hover{background:#FCEBE5;color:var(--rust)}
+
+/* ---- output options panel ---- */
+.panel{
+  background:var(--white);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px 18px;margin-top:26px;box-shadow:var(--shadow);
+}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+label.f{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:6px}
+input[type=text],select{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#FDFCFA;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+input[type=text]:focus,select:focus{border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,179,1,.18);outline:none}
+
+/* ---- page grid ---- */
+.grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--thumb),1fr));
+  gap:16px;margin-top:14px;
+}
+.page{
+  background:var(--white);border:3px solid transparent;border-radius:var(--radius);
+  box-shadow:var(--shadow);overflow:hidden;position:relative;cursor:grab;
+  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.page:hover{box-shadow:var(--shadow-lg)}
+.page.sel{border-color:var(--amber);transform:scale(1.025)}
+.page.dragging{opacity:.35}
+.page.drop-before{box-shadow:-4px 0 0 0 var(--amber), var(--shadow)}
+.page.drop-after{box-shadow:4px 0 0 0 var(--amber), var(--shadow)}
+.canvas-wrap{
+  height:calc(var(--thumb) * 1.32);background:#F7F4EE;
+  display:grid;place-items:center;overflow:hidden;border-bottom:1px solid var(--line);
+}
+.canvas-wrap img{max-width:100%;max-height:100%;display:block;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.skeleton{width:60%;height:75%;background:linear-gradient(90deg,#EEE9E0,#F7F4EE,#EEE9E0);
+  background-size:200% 100%;animation:sk 1.2s infinite;border-radius:6px}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.page-foot{padding:8px 10px;display:flex;align-items:center;gap:8px}
+.page-foot .num{font-weight:600;font-size:13px;font-family:Poppins,sans-serif}
+.page-foot .src{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.page input[type=checkbox]{width:16px;height:16px;accent-color:var(--amber);cursor:pointer;flex:none}
+.hover-bar{
+  position:absolute;top:8px;left:8px;right:8px;display:flex;gap:5px;justify-content:center;
+  opacity:0;transform:translateY(-6px);transition:.16s ease;
+}
+.page:hover .hover-bar,.page:focus-within .hover-bar{opacity:1;transform:translateY(0)}
+.mini{
+  border:none;width:30px;height:30px;border-radius:8px;background:rgba(14,14,16,.82);color:#fff;
+  cursor:pointer;display:grid;place-items:center;font-size:13px;transition:.14s;backdrop-filter:blur(4px);
+}
+.mini:hover{background:var(--charcoal);transform:scale(1.08)}
+.mini.del:hover{background:var(--rust)}
+
+/* ============================================================
+   4. FEEDBACK — toasts, progress, overlay
+   ============================================================ */
+#toasts{position:fixed;right:20px;bottom:20px;z-index:200;display:flex;flex-direction:column;gap:10px}
+.toast{
+  background:var(--charcoal);color:#fff;padding:12px 16px;border-radius:11px;
+  box-shadow:var(--shadow-lg);max-width:340px;font-size:14px;
+  animation:slide .25s ease;border-left:4px solid var(--amber);
+}
+.toast.err{border-left-color:var(--rust)}
+.toast.ok{border-left-color:#3CB371}
+@keyframes slide{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+
+#overlay{
+  position:fixed;inset:0;background:rgba(244,237,226,.82);backdrop-filter:blur(3px);
+  z-index:180;display:none;place-items:center;
+}
+#overlay.on{display:grid}
+.loader{background:var(--white);padding:26px 32px;border-radius:16px;box-shadow:var(--shadow-lg);text-align:center;min-width:260px}
+.spinner{
+  width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--amber);
+  border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.bar{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;width:0;background:var(--amber);transition:width .2s ease}
+
+/* ============================================================
+   5. RESPONSIVE
+   ============================================================ */
+@media(max-width:720px){
+  main{padding:18px 14px 80px}
+  .masthead,.toolbar{padding:12px 14px}
+  .badge{margin-left:0;order:3;width:100%;text-align:center}
+  .dropzone{padding:38px 18px}
+  .zoom input[type=range]{width:96px}
+}
+@media(prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+</style>
+</head>
+
+<body>
+
+<!-- ===================== HEADER ===================== -->
+<header class="masthead">
+  <div class="logo">
+    <div class="logo-mark">PDF</div>
+    <h1>PDF Toolkit</h1>
+  </div>
+  <span class="badge">🔒 Your files never leave your computer.</span>
+</header>
+
+<!-- ===================== STICKY TOOLBAR ===================== -->
+<div class="toolbar" id="toolbar">
+  <div class="row">
+    <button class="btn primary" id="btnMergeAll">Merge all pages</button>
+    <button class="btn" id="btnMergeSel">Merge selected</button>
+    <button class="btn" id="btnExtract">Extract selected</button>
+    <div class="divider"></div>
+    <button class="btn" id="btnSplitRange">Split by range…</button>
+    <button class="btn" id="btnSplitEvery">Split every N pages…</button>
+    <div class="divider"></div>
+    <button class="btn" id="btnRotate">↻ Rotate selected</button>
+    <button class="btn danger" id="btnDelete">Delete selected</button>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="btnUndo" title="Ctrl+Z">↶ Undo</button>
+    <button class="btn ghost" id="btnReset">Start over</button>
+  </div>
+  <div class="row">
+    <button class="btn sm" id="btnAll">Select all</button>
+    <button class="btn sm" id="btnNone">Deselect all</button>
+    <button class="btn sm" id="btnInvert">Invert selection</button>
+    <span class="counter" id="counter"><b>0</b> pages selected of <b>0</b></span>
+    <div class="spacer"></div>
+    <label class="zoom">Size
+      <input type="range" id="zoom" min="110" max="330" step="10" value="170">
+    </label>
+    <button class="btn sm" id="btnAddMore">+ Add files</button>
+  </div>
+</div>
+
+<main>
+  <!-- ===================== UPLOAD ===================== -->
+  <section id="uploadArea">
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Add PDFs or images">
+      <!-- friendly illustrated empty state -->
+      <svg width="86" height="86" viewBox="0 0 86 86" fill="none" aria-hidden="true">
+        <rect x="13" y="9" width="44" height="58" rx="7" fill="#FFFFFF" stroke="#0E0E10" stroke-width="2.5"/>
+        <rect x="29" y="19" width="44" height="58" rx="7" fill="#FDF3D6" stroke="#0E0E10" stroke-width="2.5"/>
+        <path d="M39 40h24M39 50h24M39 60h14" stroke="#0E0E10" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="63" cy="27" r="11" fill="#F5B301" stroke="#0E0E10" stroke-width="2.5"/>
+        <path d="M63 22v10M58 27h10" stroke="#0E0E10" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <h2>Drop your PDFs here</h2>
+      <p>Or add JPG and PNG images — they become PDF pages automatically.</p>
+      <button class="btn primary" id="btnBrowse">Browse files</button>
+      <div class="hint">Everything runs inside this browser tab. Nothing is uploaded.</div>
+    </div>
+    <input type="file" id="fileInput" accept="application/pdf,image/jpeg,image/png" multiple hidden>
+    <div class="files" id="files"></div>
+  </section>
+
+  <!-- ===================== OUTPUT OPTIONS ===================== -->
+  <section class="panel" id="optionsPanel" style="display:none">
+    <h3 class="section-title">Output options</h3>
+    <div class="fields">
+      <div>
+        <label class="f" for="outName">File name</label>
+        <input type="text" id="outName" value="merged-document.pdf">
+      </div>
+      <div>
+        <label class="f" for="outOrder">Page order</label>
+        <select id="outOrder">
+          <option value="keep">Keep current order</option>
+          <option value="reverse">Reverse order</option>
+        </select>
+      </div>
+      <div>
+        <label class="f" for="outNumbers">Footer page numbers</label>
+        <select id="outNumbers">
+          <option value="off">Off</option>
+          <option value="center">Bottom centre</option>
+          <option value="right">Bottom right</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PAGE WORKSPACE ===================== -->
+  <section id="workspace" style="display:none">
+    <h3 class="section-title" style="margin-top:28px">Pages — drag to reorder</h3>
+    <div class="grid" id="grid"></div>
+  </section>
+</main>
+
+<!-- ===================== FEEDBACK ===================== -->
+<div id="toasts"></div>
+<div id="overlay">
+  <div class="loader">
+    <div class="spinner"></div>
+    <div id="loaderText">Working…</div>
+    <div class="bar"><i id="loaderBar"></i></div>
+  </div>
+</div>
+
+<!-- ===================== LIBRARIES (cached by the browser after first load) ===================== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+/* ==================================================================
+   PDF TOOLKIT — all logic lives here.
+   Plain-English comments explain what every block does.
+   ================================================================== */
+
+/* ---- Tell pdf.js where its background worker file lives.
+        pdf.js draws the page previews you see on screen. ---- */
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+/* Shortcuts into pdf-lib, the library that actually rebuilds PDF files. */
+const { PDFDocument, degrees, StandardFonts, rgb } = PDFLib;
+
+/* ------------------------------------------------------------------
+   THE APP'S MEMORY
+   files  = every document the user added (raw bytes kept in memory)
+   pages  = one entry per page shown in the grid, in display order
+   history = snapshots of `pages` so Undo can step backwards
+   ------------------------------------------------------------------ */
+let files   = [];   // { id, name, size, bytes, pageCount }
+let pages   = [];   // { id, fileId, index, rotate, selected, thumb }
+let history = [];   // array of previous `pages` snapshots
+const pdfLibCache = {};   // fileId -> parsed pdf-lib document (so we parse once)
+let uid = 0;              // simple counter for unique ids
+
+/* Grab elements once so we are not searching the page repeatedly. */
+const $ = id => document.getElementById(id);
+const grid = $("grid"), filesBox = $("files"), toolbar = $("toolbar");
+
+/* ==================================================================
+   SECTION A — SMALL HELPERS (toasts, spinner, downloads, formatting)
+   ================================================================== */
+
+/* Pop a message in the bottom-right corner that fades away after 3s. */
+function toast(message, kind = "ok"){
+  const el = document.createElement("div");
+  el.className = "toast " + (kind === "err" ? "err" : "ok");
+  el.textContent = message;
+  $("toasts").appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+/* Show or hide the full-screen "working…" overlay. */
+function busy(on, text = "Working…"){
+  $("loaderText").textContent = text;
+  $("loaderBar").style.width = "0%";
+  $("overlay").classList.toggle("on", on);
+}
+/* Move the progress bar. `done` and `total` are counts, e.g. 4 of 20. */
+function progress(done, total){
+  $("loaderBar").style.width = Math.round((done / Math.max(total,1)) * 100) + "%";
+}
+
+/* Turn raw PDF bytes into a file the browser saves to the Downloads folder. */
+function download(bytes, filename){
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type:"application/pdf" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* Show 1048576 as "1.0 MB". */
+function humanSize(n){
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n/1024).toFixed(0) + " KB";
+  return (n/1048576).toFixed(1) + " MB";
+}
+
+/* Make sure whatever the user typed ends in .pdf */
+function ensurePdf(name){
+  name = (name || "").trim() || "merged-document.pdf";
+  return name.toLowerCase().endsWith(".pdf") ? name : name + ".pdf";
+}
+/* "report.pdf" -> "report"  (used when naming split files) */
+function baseName(){ return ensurePdf($("outName").value).replace(/\.pdf$/i, ""); }
+
+/* ==================================================================
+   SECTION B — UNDO
+   Before any action that changes the pages, we save a copy of the
+   current state. Undo simply restores the most recent copy.
+   ================================================================== */
+function snapshot(){
+  history.push(pages.map(p => ({ ...p })));   // shallow copy of each page
+  if (history.length > 30) history.shift();   // never keep more than 30 steps
+  $("btnUndo").disabled = false;
+}
+function undo(){
+  if (!history.length){ toast("Nothing left to undo", "err"); return; }
+  pages = history.pop();
+  $("btnUndo").disabled = history.length === 0;
+  renderGrid();
+  toast("Reverted the last change");
+}
+
+/* ==================================================================
+   SECTION C — ADDING FILES
+   ================================================================== */
+
+/* The user dropped or picked some files. Sort them, reject the rest. */
+async function handleFiles(list){
+  const incoming = Array.from(list);
+  if (!incoming.length) return;
+
+  const rejected = [];
+  busy(true, "Reading your files…");
+
+  for (let i = 0; i < incoming.length; i++){
+    const f = incoming[i];
+    progress(i, incoming.length);
+    const isPdf   = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+    const isImage = /^image\/(jpeg|png)$/.test(f.type) || /\.(jpe?g|png)$/i.test(f.name);
+
+    try{
+      if (isPdf){
+        await addPdf(f.name, new Uint8Array(await f.arrayBuffer()), f.size);
+      } else if (isImage){
+        await addImage(f);
+      } else {
+        rejected.push(f.name);
+      }
+    } catch (err){
+      // A password-protected or damaged PDF lands here instead of crashing.
+      const locked = /encrypt|password/i.test(err && err.message || "");
+      toast(locked
+        ? `"${f.name}" is password protected. Remove the password, then add it again.`
+        : `"${f.name}" could not be opened. The file may be damaged.`, "err");
+    }
+  }
+
+  busy(false);
+  if (rejected.length) toast(`Skipped ${rejected.length} file(s). Only PDF, JPG and PNG can be added.`, "err");
+  renderFiles();
+  renderGrid();
+}
+
+/* Register one PDF: check it opens, then create a page entry per page. */
+async function addPdf(name, bytes, size){
+  // pdf-lib refuses encrypted files — that check happens here and throws upward.
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption:false });
+  const count = doc.getPageCount();
+
+  const fileId = "f" + (++uid);
+  pdfLibCache[fileId] = doc;
+  files.push({ id:fileId, name, size, bytes, pageCount:count });
+
+  for (let i = 0; i < count; i++){
+    pages.push({ id:"p" + (++uid), fileId, index:i, rotate:0, selected:false, thumb:null });
+  }
+}
+
+/* Turn a JPG or PNG into a one-page PDF, then treat it like any other PDF. */
+async function addImage(file){
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const doc = await PDFDocument.create();
+  const isPng = /png/i.test(file.type) || /\.png$/i.test(file.name);
+  const img = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+  const page = doc.addPage([img.width, img.height]);
+  page.drawImage(img, { x:0, y:0, width:img.width, height:img.height });
+  const pdfBytes = await doc.save();
+  await addPdf(file.name.replace(/\.(jpe?g|png)$/i, "") + ".pdf", pdfBytes, file.size);
+}
+
+/* Remove one source file and every page that came from it. */
+function removeFile(fileId){
+  snapshot();
+  files = files.filter(f => f.id !== fileId);
+  pages = pages.filter(p => p.fileId !== fileId);
+  delete pdfLibCache[fileId];
+  renderFiles(); renderGrid();
+  toast("File removed");
+}
+
+/* ==================================================================
+   SECTION D — DRAWING THE SCREEN
+   ================================================================== */
+
+/* The list of uploaded documents shown above the page grid. */
+function renderFiles(){
+  filesBox.innerHTML = "";
+  files.forEach(f => {
+    const card = document.createElement("div");
+    card.className = "file-card";
+    card.innerHTML =
+      '<div class="file-icon">📄</div>' +
+      '<div class="file-meta"><div class="nm"></div>' +
+      '<div class="sub">' + f.pageCount + ' page' + (f.pageCount===1?'':'s') + ' · ' + humanSize(f.size) + '</div></div>' +
+      '<button class="x" title="Remove this file">✕</button>';
+    card.querySelector(".nm").textContent = f.name;      // textContent keeps odd filenames safe
+    card.querySelector(".nm").title = f.name;
+    card.querySelector(".x").onclick = () => removeFile(f.id);
+    filesBox.appendChild(card);
+  });
+}
+
+/* Build the thumbnail grid from the `pages` array, in its current order. */
+function renderGrid(){
+  const has = pages.length > 0;
+  toolbar.classList.toggle("on", has);
+  $("workspace").style.display = has ? "block" : "none";
+  $("optionsPanel").style.display = has ? "block" : "none";
+
+  grid.innerHTML = "";
+  pages.forEach((p, i) => {
+    const file = files.find(f => f.id === p.fileId);
+    const card = document.createElement("div");
+    card.className = "page" + (p.selected ? " sel" : "");
+    card.dataset.id = p.id;
+    card.draggable = true;
+
+    card.innerHTML =
+      '<div class="canvas-wrap">' + (p.thumb ? '<img alt="">' : '<div class="skeleton"></div>') + '</div>' +
+      '<div class="hover-bar">' +
+        '<button class="mini" data-a="left"  title="Rotate left">↺</button>' +
+        '<button class="mini" data-a="right" title="Rotate right">↻</button>' +
+        '<button class="mini" data-a="dupe"  title="Duplicate">⧉</button>' +
+        '<button class="mini del" data-a="del" title="Delete this page">🗑</button>' +
+      '</div>' +
+      '<div class="page-foot">' +
+        '<input type="checkbox"' + (p.selected ? " checked" : "") + '>' +
+        '<span class="num">' + (i + 1) + '</span>' +
+        '<span class="src"></span>' +
+      '</div>';
+
+    if (p.thumb) card.querySelector("img").src = p.thumb;
+    const src = card.querySelector(".src");
+    src.textContent = file ? file.name : "";
+    if (file) src.title = file.name + " · page " + (p.index + 1);
+
+    /* Tick box toggles selection. */
+    card.querySelector("input").onchange = e => { p.selected = e.target.checked; renderGrid(); };
+
+    /* The four hover buttons. */
+    card.querySelectorAll(".mini").forEach(b => b.onclick = e => {
+      e.stopPropagation();
+      const action = b.dataset.a;
+      snapshot();
+      if (action === "left")  { p.rotate = (p.rotate + 270) % 360; p.thumb = null; }
+      if (action === "right") { p.rotate = (p.rotate +  90) % 360; p.thumb = null; }
+      if (action === "dupe")  { pages.splice(i + 1, 0, { ...p, id:"p" + (++uid), selected:false }); }
+      if (action === "del")   { pages.splice(i, 1); }
+      renderGrid();
+    });
+
+    grid.appendChild(card);
+  });
+
+  updateCounter();
+  drawMissingThumbs();     // fill in any previews that have not been drawn yet
+}
+
+/* Update the "24 pages selected of 60" line and enable/disable buttons. */
+function updateCounter(){
+  const sel = pages.filter(p => p.selected).length;
+  $("counter").innerHTML = "<b>" + sel + "</b> pages selected of <b>" + pages.length + "</b>";
+  ["btnMergeSel","btnExtract","btnRotate","btnDelete"].forEach(id => $(id).disabled = sel === 0);
+  $("btnUndo").disabled = history.length === 0;
+}
+
+/* ==================================================================
+   SECTION E — DRAWING THUMBNAILS WITH PDF.JS
+   Each preview is drawn once onto a hidden canvas and stored as an
+   image. Rotating a page clears the stored image so it is redrawn.
+   ================================================================== */
+const pdfjsCache = {};      // fileId -> pdf.js document
+
+async function getViewer(fileId){
+  if (!pdfjsCache[fileId]){
+    const file = files.find(f => f.id === fileId);
+    // .slice() hands pdf.js its own copy so our original bytes stay intact.
+    pdfjsCache[fileId] = await pdfjsLib.getDocument({ data:file.bytes.slice(0) }).promise;
+  }
+  return pdfjsCache[fileId];
+}
+
+let drawing = false;
+async function drawMissingThumbs(){
+  if (drawing) return;                       // only one drawing loop at a time
+  drawing = true;
+  for (const p of pages){
+    if (p.thumb) continue;
+    try{
+      const doc  = await getViewer(p.fileId);
+      const page = await doc.getPage(p.index + 1);
+      // page.rotate is the rotation already inside the file; p.rotate is ours.
+      const view = page.getViewport({ scale:1, rotation:(page.rotate + p.rotate) % 360 });
+      const scale = 340 / view.width;                    // draw at a comfortable width
+      const vp = page.getViewport({ scale, rotation:(page.rotate + p.rotate) % 360 });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+      await page.render({ canvasContext:canvas.getContext("2d"), viewport:vp }).promise;
+      p.thumb = canvas.toDataURL("image/jpeg", 0.8);
+
+      // Slot the finished picture into the card without rebuilding the grid.
+      const card = grid.querySelector('[data-id="' + p.id + '"] .canvas-wrap');
+      if (card) card.innerHTML = '<img src="' + p.thumb + '" alt="">';
+    } catch (err){
+      const card = grid.querySelector('[data-id="' + p.id + '"] .canvas-wrap');
+      if (card) card.innerHTML = '<div style="font-size:12px;color:#6B6B72">Preview unavailable</div>';
+    }
+  }
+  drawing = false;
+}
+
+/* ==================================================================
+   SECTION F — BUILDING A NEW PDF
+   Takes a list of pages, copies them into a fresh document, applies
+   rotation, optionally adds footer numbers, and returns the bytes.
+   ================================================================== */
+async function buildPdf(list, opts = {}){
+  const out = await PDFDocument.create();
+  const useOptions = opts.applyOptions !== false;
+
+  // Honour the "reverse order" dropdown.
+  let ordered = list.slice();
+  if (useOptions && $("outOrder").value === "reverse") ordered.reverse();
+
+  for (let i = 0; i < ordered.length; i++){
+    const p = ordered[i];
+    const source = pdfLibCache[p.fileId];
+    if (!source) continue;
+    const [copied] = await out.copyPages(source, [p.index]);
+    // Add our rotation on top of whatever rotation the page already had.
+    const current = copied.getRotation().angle || 0;
+    copied.setRotation(degrees((current + p.rotate) % 360));
+    out.addPage(copied);
+    progress(i + 1, ordered.length);
+  }
+
+  // Optional footer page numbers.
+  const mode = useOptions ? $("outNumbers").value : "off";
+  if (mode !== "off"){
+    const font = await out.embedFont(StandardFonts.Helvetica);
+    out.getPages().forEach((pg, i) => {
+      const label = String(i + 1);
+      const size = 10;
+      const w = font.widthOfTextAtSize(label, size);
+      const { width } = pg.getSize();
+      pg.drawText(label, {
+        x: mode === "center" ? (width - w) / 2 : width - w - 40,
+        y: 22, size, font, color: rgb(0.05, 0.05, 0.06)
+      });
+    });
+  }
+  return out.save();
+}
+
+/* Wrapper that shows the spinner, builds the file and saves it. */
+async function makeAndDownload(list, filename, message){
+  if (!list.length){ toast("Select at least one page first", "err"); return; }
+  busy(true, message || "Building your PDF…");
+  try{
+    const bytes = await buildPdf(list);
+    download(bytes, ensurePdf(filename));
+    toast("Saved " + ensurePdf(filename));
+  } catch (err){
+    toast("Could not build the PDF. " + (err.message || ""), "err");
+  } finally { busy(false); }
+}
+
+/* ==================================================================
+   SECTION G — TOOLBAR ACTIONS
+   ================================================================== */
+const selected = () => pages.filter(p => p.selected);
+
+$("btnMergeAll").onclick = () => makeAndDownload(pages, $("outName").value, "Merging every page…");
+$("btnMergeSel").onclick = () => makeAndDownload(selected(), $("outName").value, "Merging selected pages…");
+$("btnExtract").onclick  = () => makeAndDownload(selected(), baseName() + "-extracted.pdf", "Extracting pages…");
+
+/* Delete every ticked page. */
+$("btnDelete").onclick = () => {
+  const n = selected().length;
+  if (!n) return;
+  snapshot();
+  pages = pages.filter(p => !p.selected);
+  renderGrid();
+  toast("Deleted " + n + " page" + (n === 1 ? "" : "s"));
+};
+
+/* Turn every ticked page a quarter turn clockwise. */
+$("btnRotate").onclick = () => {
+  if (!selected().length) return;
+  snapshot();
+  selected().forEach(p => { p.rotate = (p.rotate + 90) % 360; p.thumb = null; });
+  renderGrid();
+  toast("Rotated " + selected().length + " page(s)");
+};
+
+/* Selection helpers. */
+$("btnAll").onclick    = () => { pages.forEach(p => p.selected = true);  renderGrid(); };
+$("btnNone").onclick   = () => { pages.forEach(p => p.selected = false); renderGrid(); };
+$("btnInvert").onclick = () => { pages.forEach(p => p.selected = !p.selected); renderGrid(); };
+$("btnUndo").onclick   = undo;
+$("btnAddMore").onclick = () => $("fileInput").click();
+
+/* Wipe everything and go back to the upload screen. */
+$("btnReset").onclick = () => {
+  if (!confirm("Clear all files and pages and start over?")) return;
+  files = []; pages = []; history = [];
+  Object.keys(pdfLibCache).forEach(k => delete pdfLibCache[k]);
+  Object.keys(pdfjsCache).forEach(k => delete pdfjsCache[k]);
+  renderFiles(); renderGrid();
+  toast("Cleared. Add some files to begin.");
+};
+
+/* ---- Split by range, e.g. "1-3, 7, 10-12" ---- */
+$("btnSplitRange").onclick = async () => {
+  const input = prompt("Which pages? Use commas and dashes, for example  1-3, 7, 10-12", "1-3, 7");
+  if (input === null) return;
+  let ranges;
+  try { ranges = parseRanges(input, pages.length); }
+  catch (err){ toast(err.message, "err"); return; }
+
+  busy(true, "Splitting into " + ranges.length + " file(s)…");
+  try{
+    for (let i = 0; i < ranges.length; i++){
+      const slice = ranges[i].map(n => pages[n - 1]);
+      const bytes = await buildPdf(slice);
+      download(bytes, baseName() + "-part" + (i + 1) + ".pdf");
+      await new Promise(r => setTimeout(r, 350));   // small gap so Chrome saves each one
+    }
+    toast("Saved " + ranges.length + " file(s). Allow multiple downloads if Chrome asks.");
+  } catch (err){ toast("Split failed. " + (err.message || ""), "err"); }
+  finally { busy(false); }
+};
+
+/* Turn "1-3, 7" into [[1,2,3],[7]] and complain about anything invalid. */
+function parseRanges(text, max){
+  const out = [];
+  text.split(",").forEach(chunk => {
+    const part = chunk.trim();
+    if (!part) return;
+    const span = part.match(/^(\d+)\s*-\s*(\d+)$/);
+    const one  = part.match(/^(\d+)$/);
+    if (span){
+      let a = +span[1], b = +span[2];
+      if (a > b) [a, b] = [b, a];
+      if (a < 1 || b > max) throw new Error("Pages must be between 1 and " + max);
+      const list = []; for (let n = a; n <= b; n++) list.push(n);
+      out.push(list);
+    } else if (one){
+      const n = +one[1];
+      if (n < 1 || n > max) throw new Error("Pages must be between 1 and " + max);
+      out.push([n]);
+    } else {
+      throw new Error('"' + part + '" is not a valid range. Try 1-3, 7, 10-12');
+    }
+  });
+  if (!out.length) throw new Error("Enter at least one page or range");
+  return out;
+}
+
+/* ---- Split every N pages, bundled into a .zip ---- */
+$("btnSplitEvery").onclick = async () => {
+  const answer = prompt("Start a new PDF every how many pages?", "5");
+  if (answer === null) return;
+  const n = parseInt(answer, 10);
+  if (!n || n < 1){ toast("Enter a whole number of 1 or more", "err"); return; }
+
+  busy(true, "Splitting and zipping…");
+  try{
+    const zip = new JSZip();
+    let part = 1;
+    for (let i = 0; i < pages.length; i += n){
+      const bytes = await buildPdf(pages.slice(i, i + n));
+      zip.file(baseName() + "-part" + part + ".pdf", bytes);
+      part++;
+      progress(i + n, pages.length);
+    }
+    const blob = await zip.generateAsync({ type:"blob" });
+    download(blob, baseName() + "-split.zip");
+    toast("Saved " + (part - 1) + " PDFs inside a zip file");
+  } catch (err){ toast("Split failed. " + (err.message || ""), "err"); }
+  finally { busy(false); }
+};
+
+/* ==================================================================
+   SECTION H — DRAG AND DROP REORDERING
+   Pages can be dragged anywhere in the grid, including in front of
+   pages that came from a different document.
+   ================================================================== */
+let draggingId = null, dropTarget = null;
+
+grid.addEventListener("dragstart", e => {
+  const card = e.target.closest(".page");
+  if (!card) return;
+  draggingId = card.dataset.id;
+  card.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", draggingId);
+});
+
+grid.addEventListener("dragover", e => {
+  e.preventDefault();
+  const card = e.target.closest(".page");
+  grid.querySelectorAll(".drop-before,.drop-after").forEach(c => c.classList.remove("drop-before","drop-after"));
+  if (!card || card.dataset.id === draggingId){ dropTarget = null; return; }
+  const box = card.getBoundingClientRect();
+  const after = e.clientX > box.left + box.width / 2;   // right half means "drop after"
+  card.classList.add(after ? "drop-after" : "drop-before");
+  dropTarget = { id:card.dataset.id, after };
+});
+
+grid.addEventListener("drop", e => {
+  e.preventDefault();
+  if (!draggingId || !dropTarget) return;
+  snapshot();
+  const from = pages.findIndex(p => p.id === draggingId);
+  const moved = pages.splice(from, 1)[0];
+  let to = pages.findIndex(p => p.id === dropTarget.id);
+  if (dropTarget.after) to += 1;
+  pages.splice(to, 0, moved);
+  draggingId = null; dropTarget = null;
+  renderGrid();
+});
+
+grid.addEventListener("dragend", () => {
+  grid.querySelectorAll(".dragging,.drop-before,.drop-after")
+      .forEach(c => c.classList.remove("dragging","drop-before","drop-after"));
+  draggingId = null; dropTarget = null;
+});
+
+/* ==================================================================
+   SECTION I — UPLOAD ZONE, ZOOM SLIDER, KEYBOARD SHORTCUTS
+   ================================================================== */
+const dz = $("dropzone");
+$("btnBrowse").onclick = e => { e.stopPropagation(); $("fileInput").click(); };
+dz.onclick = () => $("fileInput").click();
+dz.onkeydown = e => { if (e.key === "Enter" || e.key === " ") $("fileInput").click(); };
+$("fileInput").onchange = e => { handleFiles(e.target.files); e.target.value = ""; };
+
+/* Highlight the drop zone while a file is hovering over it. */
+["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("hot"); }));
+["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("hot"); }));
+dz.addEventListener("drop", e => handleFiles(e.dataTransfer.files));
+
+/* Stop the browser from opening a PDF when it is dropped outside the zone. */
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => { if (!e.target.closest("#dropzone")) e.preventDefault(); });
+
+/* The size slider changes one CSS variable, which resizes the whole grid. */
+$("zoom").oninput = e => document.documentElement.style.setProperty("--thumb", e.target.value + "px");
+
+/* Ctrl+A select all · Delete remove selected · Ctrl+Z undo */
+document.addEventListener("keydown", e => {
+  const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+  if (typing) return;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key.toLowerCase() === "a" && pages.length){ e.preventDefault(); $("btnAll").click(); }
+  if (ctrl && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
+  if ((e.key === "Delete" || e.key === "Backspace") && selected().length){ e.preventDefault(); $("btnDelete").click(); }
+});
+
+/* Warn before closing the tab while work is unsaved. */
+window.addEventListener("beforeunload", e => {
+  if (pages.length){ e.preventDefault(); e.returnValue = ""; }
+});
+
+/* Start with a clean, correct screen. */
+renderGrid();
+</script>
+</body>
+</html>

@@ -1,0 +1,2873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StatementIQ — Bank &amp; Credit Card Statement Analyser</title>
+
+<!-- ==========================================================================
+     StatementIQ — single-file, offline, browser-only statement analyser.
+     Everything (parsing, analysis, Excel writing) happens on this machine.
+     Libraries are loaded from CDN only so the page can render; no data is
+     ever sent anywhere. If you want a 100% air-gapped build, download the
+     five .js files below and point the src attributes at local copies.
+     ========================================================================== -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+/* ---------- DESIGN TOKENS -------------------------------------------------
+   Change these six values to re-skin the whole app. Nothing else needs edits.
+   -------------------------------------------------------------------------- */
+:root{
+  --charcoal:#0E0E10;
+  --amber:#F5B301;
+  --cream:#F4EDE2;
+  --rust:#E2582B;
+  --green:#177245;
+  --green-soft:#E6F4EA;
+
+  --bg:var(--cream);
+  --surface:#FFFFFF;
+  --surface-2:#FBF8F3;
+  --ink:var(--charcoal);
+  --ink-soft:#5A5A62;
+  --ink-faint:#8B8B94;
+  --line:#E5DFD3;
+  --shadow:0 2px 4px rgba(14,14,16,.04), 0 8px 24px rgba(14,14,16,.06);
+  --shadow-lg:0 8px 40px rgba(14,14,16,.14);
+  --r:12px;
+  --mono:'Roboto Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html[data-theme="dark"]{
+  --bg:#111114;
+  --surface:#1A1A1F;
+  --surface-2:#212127;
+  --ink:#F4EDE2;
+  --ink-soft:#B4B4BE;
+  --ink-faint:#84848E;
+  --line:#2E2E37;
+  --cream:#111114;
+  --green-soft:#12291C;
+  --shadow:0 2px 4px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:'Poppins',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:'Poppins',sans-serif;margin:0;font-weight:700;letter-spacing:-.01em}
+h1{font-size:20px;font-weight:800}
+h2{font-size:17px}
+h3{font-size:15px}
+h4{font-size:13px;font-weight:600}
+/* Tabular figures everywhere a number appears, so digit columns line up. */
+.num,td.num,th.num,.stat-val,.money{font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+a{color:var(--rust)}
+
+/* ---------- PRIVACY BANNER ---------- */
+#privacyBar{
+  position:sticky;top:0;z-index:80;background:var(--charcoal);color:#fff;
+  padding:9px 18px;font-size:12.5px;display:flex;gap:14px;align-items:center;
+  flex-wrap:wrap;border-bottom:2px solid var(--amber);
+}
+#privacyBar b{color:var(--amber);font-weight:600}
+#privacyBar .sub{color:#B9B9C2}
+
+/* ---------- HEADER ---------- */
+header.app{
+  background:var(--surface);border-bottom:1px solid var(--line);
+  padding:14px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+}
+.brandmark{
+  width:38px;height:38px;border-radius:10px;background:var(--charcoal);
+  display:grid;place-items:center;flex:none;
+}
+.brandmark svg{width:22px;height:22px}
+.brand-txt small{display:block;color:var(--ink-faint);font-size:11.5px;letter-spacing:.02em}
+.header-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- BUTTONS ---------- */
+.btn{
+  border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  padding:8px 14px;border-radius:9px;font-weight:500;font-size:13px;
+  display:inline-flex;align-items:center;gap:7px;transition:.15s;
+}
+.btn:hover{border-color:var(--ink-faint);transform:translateY(-1px)}
+.btn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:var(--charcoal);font-weight:600}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.dark{background:var(--charcoal);border-color:var(--charcoal);color:#fff}
+.btn.danger{background:transparent;border-color:var(--rust);color:var(--rust)}
+.btn.danger:hover{background:var(--rust);color:#fff}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:7px}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+/* ---------- STEP INDICATOR ---------- */
+#steps{
+  display:flex;gap:6px;padding:12px 18px;background:var(--surface-2);
+  border-bottom:1px solid var(--line);overflow-x:auto;
+}
+.step{
+  display:flex;align-items:center;gap:8px;padding:6px 14px 6px 8px;border-radius:999px;
+  font-size:12.5px;color:var(--ink-faint);white-space:nowrap;border:1px solid transparent;
+}
+.step .dot{
+  width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--ink-soft);
+  display:grid;place-items:center;font-size:11px;font-weight:700;font-family:var(--mono);flex:none;
+}
+.step.active{background:var(--amber);color:var(--charcoal);font-weight:600}
+.step.active .dot{background:var(--charcoal);color:var(--amber)}
+.step.done{color:var(--green)}
+.step.done .dot{background:var(--green);color:#fff}
+
+/* ---------- MODULE TABS ---------- */
+#tabs{display:flex;gap:2px;padding:0 18px;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{
+  border:none;background:none;padding:13px 16px;font-size:13.5px;font-weight:500;
+  color:var(--ink-soft);border-bottom:3px solid transparent;white-space:nowrap;
+}
+.tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--amber)}
+.tab .pill{
+  background:var(--charcoal);color:var(--amber);font-family:var(--mono);font-size:10.5px;
+  padding:1px 6px;border-radius:99px;margin-left:6px;
+}
+
+/* ---------- LAYOUT ---------- */
+main{max-width:1400px;margin:0 auto;padding:20px 18px 60px}
+.panel{display:none}
+.panel.on{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
+.card > h2, .card > h3{margin-bottom:4px}
+.card .hint{color:var(--ink-faint);font-size:12.5px;margin:0 0 14px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr}}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+
+/* ---------- STAT CARDS ---------- */
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
+.stat .lbl{font-size:11.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.stat-val{font-size:22px;font-weight:700;margin-top:5px;letter-spacing:-.02em}
+.stat .sub{font-size:11.5px;color:var(--ink-soft);margin-top:3px}
+.stat.accent{border-left:3px solid var(--amber)}
+.pos{color:var(--green)} .neg{color:var(--rust)}
+
+/* ---------- TABLES ---------- */
+.tblwrap{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:600px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{
+  background:var(--charcoal);color:#fff;text-align:left;padding:9px 10px;font-weight:600;
+  position:sticky;top:0;z-index:2;white-space:nowrap;font-size:11.5px;letter-spacing:.02em;
+}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{background:#26262E}
+td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:hover td{background:var(--surface-2)}
+td.r,th.r{text-align:right}
+tfoot td{background:var(--surface-2);font-weight:700;border-top:2px solid var(--charcoal)}
+.dr{color:var(--rust)} .cr{color:var(--green)}
+.tag{
+  display:inline-block;padding:1px 7px;border-radius:99px;font-size:10.5px;font-weight:600;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--ink-soft);white-space:nowrap;
+}
+.tag.ok{background:var(--green-soft);border-color:transparent;color:var(--green)}
+.tag.bad{background:#FDEBE5;border-color:transparent;color:var(--rust)}
+.tag.warn{background:#FFF6DE;border-color:transparent;color:#8A6100}
+html[data-theme="dark"] .tag.bad{background:#33150C}
+html[data-theme="dark"] .tag.warn{background:#2E2510;color:var(--amber)}
+
+/* ---------- FORMS ---------- */
+input[type=text],input[type=number],input[type=date],input[type=password],select{
+  font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);
+  border-radius:8px;background:var(--surface);color:var(--ink);
+}
+input:focus,select:focus{outline:2px solid var(--amber);outline-offset:0;border-color:var(--amber)}
+label.f{display:block;font-size:11.5px;color:var(--ink-faint);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
+
+/* ---------- DROPZONE ---------- */
+#drop{
+  border:2px dashed var(--line);border-radius:16px;padding:38px 20px;text-align:center;
+  background:var(--surface);transition:.18s;cursor:pointer;
+}
+#drop:hover,#drop.hot{border-color:var(--amber);background:#FFFDF6}
+html[data-theme="dark"] #drop:hover,html[data-theme="dark"] #drop.hot{background:#20200f}
+#drop h3{margin-bottom:6px}
+#drop p{color:var(--ink-faint);font-size:12.5px;margin:0}
+
+/* ---------- FILE LIST ---------- */
+.filerow{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--surface)}
+.filerow .nm{font-weight:500;font-size:13px;word-break:break-all}
+.filerow .meta{font-size:11.5px;color:var(--ink-faint)}
+
+/* ---------- PROGRESS ---------- */
+#progWrap{display:none;margin:14px 0}
+.bar{height:7px;background:var(--line);border-radius:99px;overflow:hidden}
+.bar > i{display:block;height:100%;background:var(--amber);width:0%;transition:width .2s}
+#progTxt{font-size:12px;color:var(--ink-soft);margin-top:6px}
+
+/* ---------- MODAL ---------- */
+.modal{position:fixed;inset:0;background:rgba(14,14,16,.55);display:none;place-items:center;z-index:200;padding:20px}
+.modal.on{display:grid}
+.modal .box{background:var(--surface);border-radius:16px;padding:24px;max-width:480px;width:100%;box-shadow:var(--shadow-lg)}
+.kbd{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11px}
+
+/* ---------- TOASTS ---------- */
+#toasts{position:fixed;right:18px;bottom:18px;z-index:300;display:flex;flex-direction:column;gap:8px;max-width:340px}
+.toast{
+  background:var(--charcoal);color:#fff;padding:11px 15px;border-radius:10px;font-size:12.5px;
+  box-shadow:var(--shadow-lg);border-left:3px solid var(--amber);animation:slidein .2s ease;
+}
+.toast.err{border-left-color:var(--rust)} .toast.ok{border-left-color:#3DDC84}
+@keyframes slidein{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+
+/* ---------- EMPTY STATE ---------- */
+.empty{text-align:center;padding:46px 20px;color:var(--ink-faint)}
+.empty svg{width:110px;height:110px;margin-bottom:12px;opacity:.95}
+.empty h3{color:var(--ink);margin-bottom:6px}
+.empty p{font-size:13px;max-width:420px;margin:0 auto 16px}
+
+/* ---------- MISC ---------- */
+.chartbox{position:relative;height:280px}
+.chartbox.tall{height:330px}
+.banner{padding:11px 14px;border-radius:10px;font-size:13px;display:flex;gap:10px;align-items:flex-start;margin-bottom:12px}
+.banner.ok{background:var(--green-soft);color:var(--green);border:1px solid rgba(23,114,69,.25)}
+.banner.bad{background:#FDEBE5;color:var(--rust);border:1px solid rgba(226,88,43,.25)}
+.banner.warn{background:#FFF6DE;color:#7A5600;border:1px solid rgba(245,179,1,.4)}
+html[data-theme="dark"] .banner.bad{background:#2A1108}
+html[data-theme="dark"] .banner.warn{background:#2A2210;color:var(--amber)}
+.subtabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.subtab{border:1px solid var(--line);background:var(--surface);padding:7px 13px;border-radius:99px;font-size:12.5px;color:var(--ink-soft)}
+.subtab.on{background:var(--charcoal);color:#fff;border-color:var(--charcoal);font-weight:600}
+footer{border-top:1px solid var(--line);padding:20px 18px 40px;text-align:center;color:var(--ink-faint);font-size:12px;background:var(--surface)}
+footer .disc{max-width:760px;margin:0 auto 10px;line-height:1.6}
+.duedays{font-size:34px;font-weight:800;font-family:var(--mono);letter-spacing:-.03em}
+
+/* ---------- PRINT ---------- */
+@media print{
+  #privacyBar,#tabs,#steps,.header-actions,#drop,#toasts,.no-print,.btn{display:none!important}
+  body{background:#fff}
+  .card{box-shadow:none;border:1px solid #ccc;break-inside:avoid;page-break-inside:avoid}
+  .panel{display:block!important}
+  main{max-width:none;padding:0}
+  .tblwrap{max-height:none;overflow:visible}
+  th{background:#0E0E10!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="privacyBar">
+  <span>🔒 <b>Your statements are processed entirely on this computer.</b> No data is uploaded, transmitted, or stored anywhere online.</span>
+  <span class="sub">Closing this tab clears everything, unless you export a file yourself.</span>
+</div>
+
+<header class="app">
+  <div class="brandmark">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#F5B301" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/>
+    </svg>
+  </div>
+  <div class="brand-txt">
+    <h1>StatementIQ</h1>
+    <small>Bank &amp; credit card statement analyser · runs offline in your browser</small>
+  </div>
+  <div class="header-actions">
+    <button class="btn sm" id="btnSample">Load sample data</button>
+    <button class="btn sm" id="btnTheme" title="Toggle dark mode">🌙 Dark</button>
+    <button class="btn sm" onclick="window.print()">Print report</button>
+    <button class="btn sm primary" id="btnExport">Export to Excel <span class="kbd">Ctrl+E</span></button>
+    <button class="btn sm danger" id="btnClear">Clear all data</button>
+  </div>
+</header>
+
+<div id="steps">
+  <div class="step active" data-step="1"><span class="dot">1</span> Upload</div>
+  <div class="step" data-step="2"><span class="dot">2</span> Verify columns</div>
+  <div class="step" data-step="3"><span class="dot">3</span> Review</div>
+  <div class="step" data-step="4"><span class="dot">4</span> Analyse</div>
+  <div class="step" data-step="5"><span class="dot">5</span> Export</div>
+</div>
+
+<div id="tabs">
+  <button class="tab on" data-panel="pUpload">Upload &amp; verify</button>
+  <button class="tab" data-panel="pBank">Bank statement<span class="pill" id="pillBank">0</span></button>
+  <button class="tab" data-panel="pCard">Credit card<span class="pill" id="pillCard">0</span></button>
+  <button class="tab" data-panel="pRecon">Reconciliation</button>
+  <button class="tab" data-panel="pHelp">How to use</button>
+</div>
+
+<main>
+
+<!-- ================= UPLOAD PANEL ================= -->
+<section class="panel on" id="pUpload">
+  <div class="card">
+    <div id="drop" tabindex="0" role="button" aria-label="Choose statement files">
+      <h3>Drop your statements here</h3>
+      <p>PDF, XLSX, XLS or CSV · bank statements and credit card statements together · password-protected PDFs are fine</p>
+      <p style="margin-top:12px"><span class="btn primary">Choose files</span></p>
+      <input type="file" id="fileInput" multiple accept=".pdf,.csv,.xlsx,.xls" style="display:none">
+    </div>
+    <div id="progWrap"><div class="bar"><i id="progBar"></i></div><div id="progTxt"></div></div>
+    <div id="fileList" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card" id="mapCard" style="display:none">
+    <h2>Detected columns</h2>
+    <p class="hint">StatementIQ guessed each column's role from the header text. Fix anything that looks wrong before you continue — everything downstream depends on this.</p>
+    <div id="mapBody"></div>
+  </div>
+
+  <div class="card" id="reviewCard" style="display:none">
+    <h2>Review &amp; correct</h2>
+    <p class="hint">Click any cell to edit it. Rows flagged in rust failed to parse. Nothing is dropped silently.</p>
+    <div class="row" style="margin-bottom:12px">
+      <input type="text" id="revSearch" placeholder="Search narration…" style="min-width:240px">
+      <label style="font-size:12.5px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="revErrOnly"> Show problem rows only</label>
+      <span class="spacer"></span>
+      <button class="btn sm primary" id="btnAnalyse">Analyse →</button>
+    </div>
+    <div class="tblwrap" style="max-height:440px"><table id="revTbl"></table></div>
+  </div>
+
+  <div class="card" id="uploadEmpty">
+    <div class="empty">
+      <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="20" y="14" width="66" height="86" rx="7" fill="#FFFFFF" stroke="#0E0E10" stroke-width="3"/>
+        <rect x="34" y="30" width="38" height="5" rx="2.5" fill="#0E0E10"/>
+        <rect x="34" y="44" width="30" height="4" rx="2" fill="#E5DFD3"/>
+        <rect x="34" y="55" width="38" height="4" rx="2" fill="#E5DFD3"/>
+        <rect x="34" y="66" width="24" height="4" rx="2" fill="#E5DFD3"/>
+        <rect x="34" y="77" width="34" height="4" rx="2" fill="#E5DFD3"/>
+        <circle cx="86" cy="80" r="24" fill="#F5B301" stroke="#0E0E10" stroke-width="3"/>
+        <path d="M76 80l7 7 14-15" stroke="#0E0E10" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M96 24l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#E2582B"/>
+      </svg>
+      <h3>No statements loaded yet</h3>
+      <p>Add a PDF, Excel or CSV statement above. Want to see what the tool does first? Load the sample data — it is fabricated, not anyone's real account.</p>
+      <button class="btn primary" onclick="loadSample()">Load sample data</button>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BANK PANEL ================= -->
+<section class="panel" id="pBank">
+  <div id="bankEmpty" class="card"><div class="empty"><h3>No bank statement loaded</h3><p>Upload a savings or current account statement to see cash flow, categories, recurring debits and bank charges.</p><button class="btn primary" onclick="switchPanel('pUpload')">Go to upload</button></div></div>
+  <div id="bankBody" style="display:none">
+    <div id="bankIntegrity"></div>
+    <div class="grid g4" style="margin-bottom:16px" id="bankStats"></div>
+    <div class="grid g2">
+      <div class="card"><h3>Income vs expense by month</h3><p class="hint">Green bars are money in, rust bars are money out.</p><div class="chartbox"><canvas id="chMonthly"></canvas></div></div>
+      <div class="card"><h3>Where the money went</h3><p class="hint">Category split of all debits, self-transfers excluded.</p><div class="chartbox"><canvas id="chCategory"></canvas></div></div>
+    </div>
+    <div class="card"><h3>Daily balance trend</h3><p class="hint">The lowest point of the period is marked — that is the number a lender looks at.</p><div class="chartbox tall"><canvas id="chBalance"></canvas></div></div>
+    <div class="grid g2">
+      <div class="card">
+        <h3>Money leaving on autopilot</h3>
+        <p class="hint">Recurring debits and subscriptions detected by counterparty, amount and cadence.</p>
+        <div id="recurBox"></div>
+      </div>
+      <div class="card"><h3>Payment channel split</h3><p class="hint">How the money actually moved.</p><div class="chartbox"><canvas id="chChannel"></canvas></div></div>
+    </div>
+    <div class="grid g2">
+      <div class="card"><h3>Top 10 counterparties</h3><p class="hint">By total value across the whole period.</p><div id="topCp"></div></div>
+      <div class="card"><h3>Salary &amp; EMI</h3><p class="hint">Recurring credits that look like salary, and loan instalments going out.</p><div id="salaryEmi"></div></div>
+    </div>
+    <div class="card"><h3>Month-on-month by category</h3><p class="hint">Spot the category that quietly grew.</p><div class="tblwrap" style="max-height:420px"><table id="momTbl"></table></div></div>
+    <div class="card">
+      <h3>All transactions</h3>
+      <p class="hint">Sort by clicking a header. Change a category and StatementIQ remembers that merchant next time.</p>
+      <div class="row" style="margin-bottom:12px">
+        <input type="text" id="txSearch" placeholder="Search narration or counterparty…" style="min-width:220px">
+        <select id="txCat"><option value="">All categories</option></select>
+        <select id="txChan"><option value="">All channels</option></select>
+        <select id="txType"><option value="">Debit &amp; credit</option><option value="dr">Debits only</option><option value="cr">Credits only</option></select>
+        <input type="date" id="txFrom" title="From date"><input type="date" id="txTo" title="To date">
+        <input type="number" id="txMin" placeholder="Min ₹" style="width:100px">
+        <input type="number" id="txMax" placeholder="Max ₹" style="width:100px">
+        <button class="btn sm" id="txReset">Reset filters</button>
+        <span class="spacer"></span>
+        <button class="btn sm" id="btnCsv">Export CSV</button>
+      </div>
+      <div id="txCount" class="hint"></div>
+      <div class="tblwrap"><table id="txTbl"></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CARD PANEL ================= -->
+<section class="panel" id="pCard">
+  <div id="cardEmpty" class="card"><div class="empty"><h3>No credit card statement loaded</h3><p>Upload a credit card statement to see your true cost of holding the card, utilisation, and what paying only the minimum really costs.</p><button class="btn primary" onclick="switchPanel('pUpload')">Go to upload</button></div></div>
+  <div id="cardBody" style="display:none">
+    <div id="cardHero"></div>
+    <div class="grid g4" style="margin-bottom:16px" id="cardStats"></div>
+    <div class="card" id="minTrapCard">
+      <h3>Minimum due trap</h3>
+      <p class="hint">Same balance, two behaviours. Edit the rate or minimum-due rule if your card differs.</p>
+      <div class="row" style="margin-bottom:14px">
+        <div><label class="f">Monthly rate %</label><input type="number" id="apr" value="3.5" step="0.1" style="width:100px"></div>
+        <div><label class="f">Minimum due %</label><input type="number" id="minPct" value="5" step="0.5" style="width:100px"></div>
+        <div><label class="f">Minimum floor ₹</label><input type="number" id="minFloor" value="200" step="50" style="width:110px"></div>
+        <div style="align-self:flex-end"><button class="btn sm primary" id="btnRecalcTrap">Recalculate</button></div>
+      </div>
+      <div id="trapOut"></div>
+    </div>
+    <div class="grid g2">
+      <div class="card"><h3>Spend by category</h3><p class="hint">Purchases only — payments, refunds and reversals are excluded.</p><div class="chartbox"><canvas id="chCardCat"></canvas></div></div>
+      <div class="card"><h3>Cost of this card</h3><p class="hint">Every charge the card added on top of what you actually bought.</p><div id="cardCost"></div></div>
+    </div>
+    <div class="grid g2">
+      <div class="card"><h3>Top merchants</h3><div id="cardMerch"></div></div>
+      <div class="card"><h3>Flags worth a look</h3><p class="hint">Foreign currency, EMI instalments and reversals.</p><div id="cardFlags"></div></div>
+    </div>
+    <div class="card"><h3>Statement-on-statement</h3><p class="hint">Appears once more than one statement month is loaded.</p><div id="cardCompare"></div></div>
+    <div class="card"><h3>Card transactions</h3><div class="tblwrap"><table id="cardTbl"></table></div></div>
+  </div>
+</section>
+
+<!-- ================= RECONCILIATION PANEL ================= -->
+<section class="panel" id="pRecon">
+  <div class="subtabs">
+    <button class="subtab on" data-sub="rc1">Card to bank</button>
+    <button class="subtab" data-sub="rc2">Book to bank</button>
+    <button class="subtab" data-sub="rc3">Multi-account</button>
+    <button class="subtab" data-sub="rc4">Period comparison</button>
+  </div>
+
+  <div class="rcpanel" id="rc1">
+    <div class="card">
+      <h2>Card-to-bank reconciliation</h2>
+      <p class="hint">Matches card bill payments leaving your bank against payments received on the card, within a date window. A card payment is a settlement, not an expense — this screen stops you counting it twice.</p>
+      <div class="row" style="margin-bottom:12px">
+        <div><label class="f">Date window (± days)</label><input type="number" id="c2bDays" value="5" min="0" max="30" style="width:90px"></div>
+        <div><label class="f">Amount tolerance ₹</label><input type="number" id="c2bTol" value="1" min="0" step="1" style="width:110px"></div>
+        <div style="align-self:flex-end"><button class="btn primary sm" id="btnC2B">Run reconciliation</button></div>
+      </div>
+      <div id="c2bOut"></div>
+    </div>
+  </div>
+
+  <div class="rcpanel" id="rc2" style="display:none">
+    <div class="card">
+      <h2>Book-to-bank reconciliation</h2>
+      <p class="hint">Upload your own cashbook, Tally export or expense sheet as CSV or Excel. Three passes: reference number, then amount plus close date, then a fuzzy pass you control.</p>
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn" id="btnBookPick">Choose books file</button>
+        <input type="file" id="bookInput" accept=".csv,.xlsx,.xls" style="display:none">
+        <button class="btn sm" id="btnBookSample">Load sample books</button>
+        <span id="bookName" class="hint" style="margin:0"></span>
+      </div>
+      <div id="bookMap"></div>
+      <div class="row" id="bookRunRow" style="display:none;margin:12px 0">
+        <div><label class="f">Exact date window (± days)</label><input type="number" id="b2bD1" value="3" style="width:90px"></div>
+        <div><label class="f">Fuzzy date window (± days)</label><input type="number" id="b2bD2" value="10" style="width:90px"></div>
+        <div><label class="f">Fuzzy amount tolerance ₹</label><input type="number" id="b2bTol" value="10" style="width:110px"></div>
+        <div style="align-self:flex-end"><button class="btn primary sm" id="btnB2B">Run reconciliation</button></div>
+      </div>
+      <div id="b2bOut"></div>
+    </div>
+  </div>
+
+  <div class="rcpanel" id="rc3" style="display:none">
+    <div class="card">
+      <h2>Multi-account consolidation</h2>
+      <p class="hint">One timeline across every statement you loaded, with inter-account transfers detected so the consolidated total stays honest.</p>
+      <div id="consOut"></div>
+    </div>
+  </div>
+
+  <div class="rcpanel" id="rc4" style="display:none">
+    <div class="card">
+      <h2>Period comparison</h2>
+      <p class="hint">Category by category, with the biggest movements called out.</p>
+      <div class="row" style="margin-bottom:12px">
+        <div><label class="f">Base period</label><select id="perA"></select></div>
+        <div><label class="f">Compared with</label><select id="perB"></select></div>
+        <div style="align-self:flex-end"><button class="btn primary sm" id="btnPeriod">Compare</button></div>
+      </div>
+      <div id="perOut"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HELP PANEL ================= -->
+<section class="panel" id="pHelp">
+  <div class="card">
+    <h2>How to use StatementIQ</h2>
+    <ol style="line-height:1.9;padding-left:20px">
+      <li><b>Upload.</b> Drop in bank and credit card statements together — PDF, XLSX or CSV. Password-protected PDFs prompt for the password; nothing is stored.</li>
+      <li><b>Verify columns.</b> Check the detected column roles and fix any that are wrong with the dropdowns.</li>
+      <li><b>Review.</b> Edit any cell that came through wrong. Problem rows are flagged, never dropped.</li>
+      <li><b>Analyse.</b> Switch to the Bank or Credit card tab. Recategorise anything — the merchant rule is remembered on this browser.</li>
+      <li><b>Reconcile.</b> Card-to-bank runs on what is already loaded. Book-to-bank needs your own sheet.</li>
+      <li><b>Export.</b> Press <span class="kbd">Ctrl+E</span> for the multi-sheet workbook.</li>
+    </ol>
+    <div class="banner warn" style="margin-top:14px">The Excel writer cannot create native Excel charts from the browser. Monthly Trend and Category Summary are laid out as clean contiguous blocks, so you can select the range and press <span class="kbd">Alt+F1</span> to get a chart in two clicks.</div>
+  </div>
+  <div class="card">
+    <h3>What each Excel sheet contains</h3>
+    <div class="tblwrap"><table id="helpTbl"></table></div>
+  </div>
+  <div class="card">
+    <h3>Passwords on Indian statements</h3>
+    <p class="hint">Common formats, in the order worth trying:</p>
+    <ul style="line-height:1.8">
+      <li>PAN in lowercase + date of birth as DDMM — <span class="kbd">abcde1234f0107</span></li>
+      <li>First four letters of your name + date of birth as DDMM</li>
+      <li>Date of birth as DDMMYYYY</li>
+      <li>Customer ID or account number</li>
+      <li>Last four digits of the card + date of birth as DDMM (credit cards)</li>
+      <li>Mobile number, or the first four letters of the card name in caps + last four card digits (Amex)</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p class="disc">This tool extracts and analyses data from statements you provide. Always verify the extracted figures against your original statement before using them for tax filing, loan applications, or any financial decision. This is not financial or tax advice.</p>
+  <p>StatementIQ · runs entirely offline in your browser · no account, no upload, no tracking</p>
+</footer>
+
+<!-- password modal -->
+<div class="modal" id="pwModal">
+  <div class="box">
+    <h2>This PDF is password protected</h2>
+    <p class="hint" id="pwFile"></p>
+    <label class="f">Password</label>
+    <input type="password" id="pwInput" style="width:100%" autocomplete="off">
+    <div id="pwErr" class="banner bad" style="display:none;margin-top:10px">That password did not open the file. Try another format below.</div>
+    <details style="margin:12px 0">
+      <summary style="cursor:pointer;font-size:12.5px;color:var(--ink-soft)">Common Indian bank password formats</summary>
+      <ul style="font-size:12.5px;line-height:1.8;color:var(--ink-soft)">
+        <li>PAN lowercase + DDMM of birth</li>
+        <li>First 4 letters of name + DDMM of birth</li>
+        <li>DDMMYYYY of birth</li>
+        <li>Customer ID / account number</li>
+        <li>Last 4 digits of card + DDMM of birth</li>
+      </ul>
+    </details>
+    <label style="font-size:12.5px;display:flex;gap:7px;align-items:center;margin-bottom:14px"><input type="checkbox" id="pwAll"> Use this password for every file in this batch</label>
+    <div class="row"><button class="btn primary" id="pwOk">Unlock</button><button class="btn" id="pwSkip">Skip this file</button></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+"use strict";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+/* ============================================================================
+   0. APPLICATION STATE
+   Everything lives in memory only. Nothing is written to disk except the
+   learned category rules (localStorage) and files you explicitly export.
+   ========================================================================== */
+const S = {
+  files: [],      // {id,name,size,status,kind,note}
+  sets: [],       // parsed datasets {id,name,kind:'bank'|'card',grid,headerIdx,roles,rows[],errors[],meta,pagesText}
+  txns: [],       // unified transaction list across all datasets
+  cardMeta: [],   // one summary block per card statement
+  books: null,    // {rows:[],cols:{}} user's own records
+  charts: {},     // live Chart.js instances so we can destroy before redraw
+  learned: {},    // merchant -> category, remembered across sessions
+  recon: {c2b:null,b2b:null},
+  sort: {tx:{k:'date',dir:1}}
+};
+
+/* ============================================================================
+   1. FORMATTING & PARSING HELPERS (Indian formats)
+   ========================================================================== */
+
+// Indian digit grouping: last three digits, then pairs. Written by hand
+// because Intl output differs across browsers and we need it identical in
+// the UI and in the Excel export.
+function inr(n, dec){
+  dec = (dec===undefined)?2:dec;
+  if(n===null||n===undefined||isNaN(n)) return '₹0.00';
+  const neg = n<0; n = Math.abs(Number(n));
+  const s = n.toFixed(dec);
+  const parts = s.split('.');
+  let i = parts[0];
+  let last3 = i.slice(-3);
+  let rest = i.slice(0,-3);
+  if(rest) last3 = ',' + last3;
+  rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+  return (neg?'-₹':'₹') + rest + last3 + (parts[1] ? '.'+parts[1] : '');
+}
+// Compact Indian form for tight spaces: ₹1.25 Cr / ₹45.6 L / ₹12,500
+function inrShort(n){
+  if(n===null||n===undefined||isNaN(n)) return '₹0';
+  const neg=n<0, a=Math.abs(n);
+  const p = a>=1e7 ? (a/1e7).toFixed(2)+' Cr' : a>=1e5 ? (a/1e5).toFixed(2)+' L' : null;
+  return p ? (neg?'-₹':'₹')+p : inr(n,0);
+}
+function num(n){ return (n===null||n===undefined||isNaN(n))?'0':Number(n).toLocaleString('en-IN'); }
+function pct(a,b){ return (!b) ? '0.0%' : ((a/b)*100).toFixed(1)+'%'; }
+function esc(s){ return String(s===null||s===undefined?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const MON = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,sept:8,oct:9,nov:10,dec:11};
+
+// Parse a date the way an Indian statement writes it. Day-first is the
+// default because DD/MM is the norm here; MM/DD is only assumed when the
+// first number cannot be a day.
+function parseDate(raw){
+  if(raw instanceof Date && !isNaN(raw)) return raw;
+  let s = String(raw||'').trim();
+  if(!s) return null;
+  s = s.replace(/\s+/g,' ').replace(/[.]/g,'-');
+  let m;
+  // YYYY-MM-DD
+  if((m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/))) return mk(+m[1],+m[2]-1,+m[3]);
+  // DD-MMM-YYYY / DD MMM YY
+  if((m = s.match(/^(\d{1,2})[-\/ ]([A-Za-z]{3,9})[-\/ ](\d{2,4})/))){
+    const mo = MON[m[2].slice(0,3).toLowerCase()];
+    if(mo===undefined) return null;
+    return mk(yr(m[3]), mo, +m[1]);
+  }
+  // MMM DD, YYYY
+  if((m = s.match(/^([A-Za-z]{3,9})[ -](\d{1,2}),? ?(\d{2,4})/))){
+    const mo = MON[m[1].slice(0,3).toLowerCase()];
+    if(mo===undefined) return null;
+    return mk(yr(m[3]), mo, +m[2]);
+  }
+  // DD/MM/YYYY or DD/MM/YY  (ambiguity handled by caller against row order)
+  if((m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})/))){
+    let d=+m[1], mo=+m[2];
+    if(d>12 && mo<=12) return mk(yr(m[3]), mo-1, d);      // unambiguous day-first
+    if(mo>12 && d<=12) return mk(yr(m[3]), d-1, mo);      // clearly US order
+    return mk(yr(m[3]), mo-1, d);                          // ambiguous -> day-first
+  }
+  return null;
+  function yr(v){ v=+v; return v<100 ? (v>70?1900+v:2000+v) : v; }
+  function mk(y,mo,d){ const dt=new Date(y,mo,d); return isNaN(dt)?null:dt; }
+}
+function isAmbiguousDate(raw){
+  const m = String(raw||'').match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.]/);
+  return !!(m && +m[1]<=12 && +m[2]<=12 && +m[1]!==+m[2]);
+}
+function fmtDate(d){
+  if(!(d instanceof Date)||isNaN(d)) return '';
+  const p=n=>String(n).padStart(2,'0');
+  return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear();
+}
+function monthKey(d){ return d instanceof Date && !isNaN(d) ? d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0') : ''; }
+function monthLabel(k){
+  if(!k) return '';
+  const [y,m]=k.split('-'); const names=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return names[+m-1]+" '"+String(y).slice(2);
+}
+function dayKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function daysBetween(a,b){ return Math.round((b-a)/86400000); }
+
+// Amount parsing: strips ₹ / Rs. / INR / commas (including 1,25,000.50),
+// understands trailing Dr and Cr, (500) negatives and bare minus signs.
+// Returns {v:Number, sign:'dr'|'cr'|null} or null when it is not a number.
+function parseAmt(raw){
+  if(typeof raw === 'number') return isNaN(raw)?null:{v:raw, sign:null};
+  let s = String(raw===null||raw===undefined?'':raw).trim();
+  if(!s) return null;
+  let sign = null;
+  const su = s.toUpperCase();
+  if(/(^|[\s\-])(DR|DB|D)$/.test(su) || /\bDR\.?$/.test(su)) sign='dr';
+  if(/(^|[\s\-])(CR|C)$/.test(su) || /\bCR\.?$/.test(su)) sign='cr';
+  let neg = false;
+  if(/^\(.*\)$/.test(s)){ neg = true; s = s.slice(1,-1); }
+  s = s.replace(/(DR|CR|DB|Dr|Cr|dr|cr)\.?$/i,'')
+       .replace(/[₹$]|RS\.?|INR|\u20B9/gi,'')
+       .replace(/,/g,'').replace(/\s/g,'').trim();
+  if(s.startsWith('-')){ neg=true; s=s.slice(1); }
+  if(s.endsWith('-')){ neg=true; s=s.slice(0,-1); }   // some banks print 500.00-
+  if(s==='' || s==='.' || s==='-') return null;
+  if(!/^\d*\.?\d+$/.test(s)) return null;
+  let v = parseFloat(s);
+  if(isNaN(v)) return null;
+  if(neg) v = -v;
+  return {v:v, sign:sign};
+}
+
+function yieldUI(){ return new Promise(r=>setTimeout(r,0)); }
+
+/* ============================================================================
+   2. COLUMN ROLE DICTIONARY
+   Add a new bank's header wording here — that is all it takes to support it.
+   Matching is lowercase, punctuation-stripped, longest-alias-first.
+   ========================================================================== */
+const COL_ALIASES = {
+  date:      ['transaction date','txn date','tran date','value date','posting date','post date','date of transaction','trans date','date'],
+  valuedate: ['value dt','value date'],
+  narration: ['transaction details','transaction description','transaction remarks','particulars','description','narration','remarks','details','transaction'],
+  ref:       ['chq / ref number','chq/ref no','cheque no','ref no','reference number','reference no','instrument no','transaction id','transaction ref','voucher no','voucher','vch no','doc no','utr','ref','chq no'],
+  debit:     ['withdrawal amt','withdrawal amount','withdrawal (dr)','debit amount','withdrawals','withdrawal','payments','payment','paid','money out','debit','dr amount','dr amt','dr'],
+  credit:    ['deposit amt','deposit amount','deposit (cr)','credit amount','deposits','deposit','receipts','receipt','received','money in','credit','cr amount','cr amt','cr'],
+  amount:    ['transaction amount','amount (inr)','amount in inr','amount','value','amt'],
+  drcr:      ['dr / cr','dr/cr','type','txn type','cr/dr','indicator'],
+  balance:   ['closing balance','running balance','available balance','balance (inr)','balance'],
+};
+const ROLE_LABELS = {date:'Date',valuedate:'Value date',narration:'Narration',ref:'Reference',debit:'Debit',credit:'Credit',amount:'Amount',drcr:'Dr/Cr flag',balance:'Balance',ignore:'— ignore —'};
+
+function normHead(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9\/ ]/g,' ').replace(/\s+/g,' ').trim(); }
+
+// Score one header cell against the alias dictionary. Longer aliases win so
+// "withdrawal amt" is not mistaken for a plain "amount" column.
+function roleForHeader(text){
+  const t = normHead(text);
+  if(!t) return null;
+  let best=null, bestLen=0;
+  for(const role in COL_ALIASES){
+    for(const a of COL_ALIASES[role]){
+      if(t===a){ if(a.length>bestLen){best=role;bestLen=a.length+100;} }
+      else if(t.includes(a) && a.length>2){ if(a.length>bestLen){best=role;bestLen=a.length;} }
+      // the header can also be shorter than the alias ("Payment" vs "payments")
+      else if(a.includes(t) && t.length>=5){ if(a.length>bestLen){best=role;bestLen=a.length;} }
+    }
+  }
+  return best;
+}
+
+/* ============================================================================
+   3. PDF EXTRACTION — COORDINATE-BASED TABLE RECONSTRUCTION
+   ========================================================================== */
+
+// Read a PDF into per-page items carrying x/y. Throws a tagged error when the
+// file needs a password so the caller can prompt instead of failing.
+async function readPdf(file, password, onProg){
+  const buf = await file.arrayBuffer();
+  const params = {data:new Uint8Array(buf)};
+  if(password) params.password = password;
+  let pdf;
+  try{
+    pdf = await pdfjsLib.getDocument(params).promise;
+  }catch(e){
+    if(e && (e.name==='PasswordException' || /password/i.test(e.message||''))){
+      const err = new Error('PASSWORD'); err.needsPassword = true;
+      err.wrong = (e.code===2 || /incorrect/i.test(e.message||''));
+      throw err;
+    }
+    throw e;
+  }
+  const pages = [];
+  for(let p=1; p<=pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const items = tc.items
+      .filter(i => i.str && i.str.trim() !== '')
+      .map(i => ({
+        str: i.str.trim(),
+        x: i.transform[4],
+        y: i.transform[5],
+        w: i.width || (i.str.length*4),
+        h: i.height || Math.abs(i.transform[3]) || 8
+      }));
+    pages.push({num:p, items, rows: clusterRows(items), raw: items.map(i=>i.str).join(' ')});
+    if(onProg) onProg(p, pdf.numPages);
+    await yieldUI();                       // keep the browser responsive
+  }
+  // keep a page-1 render handy in case we need OCR later
+  pages.pdfDoc = pdf;
+  return pages;
+}
+
+/* Cluster text items into visual rows.
+   PDF text has no concept of a row: each fragment carries its own baseline y.
+   Fragments printed on the same line share (almost) the same y, so we sort
+   top-to-bottom and start a new row whenever y drops by more than a
+   tolerance derived from the font height. Within a row we sort left to right.
+   This is what makes tabular statements readable — joining .str values in
+   document order does not work because banks emit columns out of order. */
+function clusterRows(items, tol){
+  if(!items.length) return [];
+  const sorted = items.slice().sort((a,b)=> (b.y - a.y) || (a.x - b.x));
+  const rows = [];
+  let cur = [sorted[0]], curY = sorted[0].y;
+  const T = tol || Math.max(2.5, (sorted[0].h||8) * 0.55);
+  for(let i=1;i<sorted.length;i++){
+    const it = sorted[i];
+    if(Math.abs(it.y - curY) <= T){
+      cur.push(it);
+      curY = (curY*(cur.length-1) + it.y)/cur.length;   // running mean keeps drift small
+    }else{
+      rows.push(cur.sort((a,b)=>a.x-b.x));
+      cur=[it]; curY=it.y;
+    }
+  }
+  rows.push(cur.sort((a,b)=>a.x-b.x));
+  return rows;
+}
+
+// Glue fragments that are visually touching into one cell, so a header like
+// "Withdrawal" + "Amt." becomes a single matchable string.
+function mergeCells(row, gap){
+  gap = gap || 6;
+  const out = [];
+  for(const it of row){
+    const last = out[out.length-1];
+    if(last && (it.x - (last.x + last.w)) < gap){
+      last.str += (it.x - (last.x+last.w) > 0.8 ? ' ' : '') + it.str;
+      last.w = (it.x + it.w) - last.x;
+    }else{
+      out.push({str:it.str, x:it.x, w:it.w, y:it.y});
+    }
+  }
+  return out;
+}
+
+/* Find the header row and derive column x-boundaries from it.
+   We walk rows from the top and take the first one where at least three
+   cells map to known column roles — that is the table header. Boundaries sit
+   at the midpoint of the gap between adjacent header cells, so a
+   right-aligned amount that starts left of its header still lands correctly. */
+function detectColumns(pages){
+  for(const pg of pages){
+    for(let r=0;r<pg.rows.length;r++){
+      const cells = mergeCells(pg.rows[r]);
+      if(cells.length < 3) continue;
+      const roles = cells.map(c=>roleForHeader(c.str));
+      const hits = roles.filter(Boolean).length;
+      const hasDate = roles.includes('date');
+      const hasMoney = roles.some(x=>['debit','credit','amount','balance'].includes(x));
+      if(hits>=3 && hasDate && hasMoney){
+        const bounds = [];
+        for(let i=0;i<cells.length;i++){
+          const left  = i===0 ? -1e6 : ((cells[i-1].x + cells[i-1].w) + cells[i].x)/2;
+          const right = i===cells.length-1 ? 1e6 : ((cells[i].x + cells[i].w) + cells[i+1].x)/2;
+          bounds.push({left, right, label:cells[i].str, role:roles[i]||'ignore'});
+        }
+        return {page:pg.num, rowIdx:r, cols:bounds};
+      }
+    }
+  }
+  return null;
+}
+
+// Noise a statement repeats on every page. Dropped before parsing.
+const NOISE = [
+  /page\s*\d+\s*(of|\/)\s*\d+/i, /^page\s*\d+$/i,
+  /statement of account/i, /account statement/i, /registered office/i,
+  /this is a (computer|system) generated/i, /^continued/i, /customer care/i,
+  /please (do not|note)/i, /^\s*\*+\s*$/, /end of statement/i,
+  /^gstin/i, /www\./i, /terms (and|&) conditions/i
+];
+function isNoise(text){
+  const t = text.trim();
+  if(!t || t.length<2) return true;
+  return NOISE.some(rx=>rx.test(t));
+}
+
+/* Turn the page items into a rectangular grid of strings, one array per row,
+   aligned to the detected columns. From here on, PDF, CSV and XLSX input all
+   look identical to the rest of the app. */
+function pdfToGrid(pages, colDef){
+  const cols = colDef.cols;
+  const grid = [];
+  const headerText = cols.map(c=>c.label);
+  grid.push(headerText);
+  for(const pg of pages){
+    for(let r=0;r<pg.rows.length;r++){
+      if(pg.num===colDef.page && r<=colDef.rowIdx) continue;   // skip everything above the header
+      const cells = mergeCells(pg.rows[r], 4);
+      const line = cells.map(c=>c.str).join(' ');
+      if(isNoise(line)) continue;
+      // repeated header on a continuation page
+      const asRoles = cells.map(c=>roleForHeader(c.str)).filter(Boolean).length;
+      if(asRoles>=3 && cells.length>=3) continue;
+      const out = new Array(cols.length).fill('');
+      for(const c of cells){
+        const centre = c.x + c.w/2;
+        let idx = cols.findIndex(b => centre>=b.left && centre<b.right);
+        if(idx<0) idx = c.x < cols[0].right ? 0 : cols.length-1;
+        out[idx] = (out[idx] ? out[idx]+' ' : '') + c.str;
+      }
+      if(out.some(v=>v!=='')) grid.push(out);
+    }
+  }
+  return grid;
+}
+
+/* ============================================================================
+   4. SPREADSHEET INPUT (xlsx / csv) — same grid shape as the PDF path
+   ========================================================================== */
+async function readSheet(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array', cellDates:true, raw:false});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const aoa = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false, blankrows:false});
+  return aoa.map(r => r.map(c => c instanceof Date ? fmtDate(c) : String(c===null||c===undefined?'':c).trim()));
+}
+
+// In a spreadsheet the header is rarely row 1 — banks put the account block
+// on top. Pick the row that maps to the most known roles.
+function findHeaderRow(grid){
+  let best = {idx:0, score:0};
+  const limit = Math.min(grid.length, 40);
+  for(let i=0;i<limit;i++){
+    const roles = grid[i].map(roleForHeader);
+    const score = roles.filter(Boolean).length;
+    if(score > best.score){ best = {idx:i, score:score}; }
+  }
+  return best.score>=2 ? best.idx : 0;
+}
+
+function rolesFromHeader(headerRow){
+  const used = {};
+  return headerRow.map(h=>{
+    let r = roleForHeader(h);
+    if(!r) return 'ignore';
+    // do not assign the same money role twice (some sheets repeat a label)
+    if(used[r] && ['date','narration','debit','credit','amount','balance'].includes(r)) return 'ignore';
+    used[r]=1; return r;
+  });
+}
+
+/* ============================================================================
+   5. GRID -> TRANSACTIONS
+   Includes the wrapped-narration merge, which is the single biggest cause of
+   broken output on Indian statements.
+   ========================================================================== */
+function buildRows(ds){
+  const {grid, headerIdx, roles} = ds;
+  const col = {};                                   // role -> column index
+  roles.forEach((r,i)=>{ if(r!=='ignore' && col[r]===undefined) col[r]=i; });
+  const rows = [], errors = [];
+  let ambiguousDates = 0;
+  const get = (arr,role)=> col[role]===undefined ? '' : (arr[col[role]]||'');
+
+  for(let i=headerIdx+1;i<grid.length;i++){
+    const g = grid[i];
+    if(!g || !g.some(v=>String(v).trim()!=='')) continue;
+
+    const dateRaw = get(g,'date') || get(g,'valuedate');
+    const date = parseDate(dateRaw);
+    const narr = String(get(g,'narration')||'').trim();
+    const dP = parseAmt(get(g,'debit'));
+    const cP = parseAmt(get(g,'credit'));
+    const aP = parseAmt(get(g,'amount'));
+    const bP = parseAmt(get(g,'balance'));
+    const hasMoney = !!(dP||cP||aP);
+
+    /* CONTINUATION LINE RULE
+       A row with narration text but no date and no money is the tail of the
+       previous transaction's description, wrapped onto a second line by the
+       bank's PDF layout. Append it upward rather than treating it as a row. */
+    if(!date && !hasMoney && narr && rows.length){
+      rows[rows.length-1].narration += ' ' + narr;
+      continue;
+    }
+    // a row with a date but nothing else is a header/section marker
+    if(!hasMoney && !narr) continue;
+
+    if(!date){
+      errors.push({line:i+1, raw:g.join(' | '), why:'No readable date'});
+      continue;
+    }
+    if(isAmbiguousDate(dateRaw)) ambiguousDates++;
+
+    let debit=0, credit=0;
+    if(dP || cP){                                   // split debit/credit columns
+      debit  = dP ? Math.abs(dP.v) : 0;
+      credit = cP ? Math.abs(cP.v) : 0;
+    }else if(aP){                                   // single amount column
+      const flag = String(get(g,'drcr')||'').trim().toUpperCase();
+      const s = aP.sign || (flag.startsWith('D') ? 'dr' : flag.startsWith('C') ? 'cr' : null);
+      if(s==='cr') credit = Math.abs(aP.v);
+      else if(s==='dr') debit = Math.abs(aP.v);
+      else if(aP.v < 0) credit = Math.abs(aP.v);     // signed column: minus = money in on most card files
+      else debit = aP.v;
+    }else{
+      errors.push({line:i+1, raw:g.join(' | '), why:'Amount could not be read'});
+      continue;
+    }
+    if(!debit && !credit && !narr) continue;
+
+    rows.push({
+      id: ds.id+'-'+rows.length,
+      date, dateRaw,
+      narration: narr || '(no description)',
+      ref: String(get(g,'ref')||'').trim(),
+      debit, credit,
+      balance: bP ? bP.v : null,
+      source: ds.name,
+      kind: ds.kind,
+      setId: ds.id
+    });
+  }
+
+  // If dates came out in strictly descending order the bank prints newest
+  // first — flip so every downstream chart reads left to right in time.
+  if(rows.length>2){
+    let desc=0, asc=0;
+    for(let i=1;i<rows.length;i++){ if(rows[i].date<rows[i-1].date) desc++; else if(rows[i].date>rows[i-1].date) asc++; }
+    if(desc>asc*2) rows.reverse();
+  }
+  ds.ambiguousDates = ambiguousDates;
+  ds.errors = errors;
+  return rows;
+}
+
+/* ============================================================================
+   6. CLASSIFICATION — channel, counterparty, category
+   ========================================================================== */
+const CHANNELS = [
+  {c:'UPI',            rx:/\bupi\b|\bvpa\b|@(ok|ybl|paytm|axl|ibl|hdfcbank|sbi|apl|upi)\b/i},
+  {c:'NEFT',           rx:/\bneft\b/i},
+  {c:'RTGS',           rx:/\brtgs\b/i},
+  {c:'IMPS',           rx:/\bimps\b|\bmmt\b/i},
+  {c:'ATM',            rx:/\batm\b|\batw\b|\bnwd\b|cash w(i)?thdr|\bcwdr\b/i},
+  {c:'POS',            rx:/\bpos\b|\bvps\b|\becom\b|\bpurchase\b|\bmerchant\b/i},
+  {c:'Cheque',         rx:/\bchq\b|cheque|\bclg\b|clearing/i},
+  {c:'ECS / NACH',     rx:/\bach\b|\bnach\b|\becs\b|\bmandate\b|\bsi\b|e-?mandate/i},
+  {c:'Net Banking',    rx:/\binb\b|\bib\/|net ?bank|\bibft\b|\bibr\b/i},
+  {c:'Cash',           rx:/\bcash\b|\bcdm\b|by cash|cash dep/i},
+  {c:'Bank Charges',   rx:/\bchrg\b|charges?|\bfee\b|\bgst\b|\bamb\b|penalty|\bsms\b/i},
+];
+function detectChannel(n){
+  for(const ch of CHANNELS) if(ch.rx.test(n)) return ch.c;
+  return 'Other';
+}
+
+/* Pull the human-readable counterparty out of a narration string.
+   UPI/DR/451234567890/SWIGGY/ICIC/swiggy@icici/Payment -> SWIGGY
+   The readable name is the first token that is not a bank code, not numeric,
+   and not a VPA. */
+const CP_SKIP = new Set(['UPI','DR','CR','DB','P2A','P2M','NEFT','RTGS','IMPS','MMT','POS','VPS','ECOM','ATM','ATW','NWD','CWDR','ACH','NACH','ECS','SI','INB','IB','IBFT','CHQ','CLG','TRF','TO','FROM','BY','VIA','PAYMENT','PAY','PMT','TXN','TRAN','REF','NO','IN','OUT','SELF','NA','THE','AND','LTD','PVT','INDIA','CASH']);
+
+// Keep only the words in a fragment that could plausibly be a name.
+function nameWords(p){
+  if(/@/.test(p)) return null;                        // a VPA, not a name
+  const words = p.toUpperCase().split(/\s+/).filter(w=>{
+    if(CP_SKIP.has(w)) return false;
+    if(/^\d+$/.test(w)) return false;                 // pure reference number
+    if(/[0-9X*]{4,}/.test(w)) return false;           // masked card number or long ref
+    if(/^[A-Z]{4}0[A-Z0-9]{6}$/.test(w)) return false;// IFSC code
+    return w.replace(/[^A-Z]/g,'').length >= 2;
+  });
+  if(!words.length) return null;
+  const name = words.slice(0,4).join(' ').replace(/[^A-Z0-9& .]/g,'').trim();
+  return name.length>=3 ? name.slice(0,32) : null;
+}
+function extractCounterparty(n){
+  const s = String(n||'').replace(/\s+/g,' ').trim();
+  const parts = s.split(/[\/|:\-]+/).map(p=>p.trim()).filter(Boolean);
+  for(const p of parts){
+    const nm = nameWords(p);
+    if(nm) return nm;
+  }
+  return nameWords(s) || 'Unknown';
+}
+
+/* CATEGORY RULES — add your own keywords here. First match wins, so the
+   specific rules sit above the general ones. */
+const CATEGORY_RULES = [
+  {cat:'Salary',              kw:['salary','sal cr','payroll','wages','stipend','sal-','remuneration']},
+  {cat:'Credit Card Payment', kw:['credit card','cc payment','card payment','autopay cc','ccpay','billdesk cc','cardpmt']},
+  {cat:'Rent',                kw:['rent','landlord','lease','nobroker','rentpay']},
+  {cat:'EMI & Loan',          kw:['emi','loan','bajaj fin','hdb financial','tata capital','instal','hdfc ltd','lic hfl','cholaman','emandate loan']},
+  {cat:'Insurance',           kw:['insurance','lic ','policy','premium','icici pru','hdfc life','max life','star health','niva bupa','tata aig','acko','digit']},
+  {cat:'Investment/SIP',      kw:['sip','mutual fund','mf ','zerodha','groww','upstox','icicidirect','nps','ppf','kuvera','coin','indmoney','smallcase','angel one','nse','bse','cams','kfintech']},
+  {cat:'Utilities',           kw:['electricity','power','mseb','bses','tata power','adani elec','water bill','gas','indane','hp gas','bharatgas','torrent power','maintenance','society']},
+  {cat:'Mobile & Internet',   kw:['jio','airtel','vodafone','vi ','bsnl','broadband','act fibernet','hathway','tikona','recharge','dth','tata play','excitel']},
+  {cat:'Food & Dining',       kw:['swiggy','zomato','dominos','pizza','mcdonald','kfc','starbucks','cafe','restaurant','eatfit','faasos','box8','burger','barbeque','chaayos','dunkin','subway','biryani','hotel ']},
+  {cat:'Groceries',           kw:['bigbasket','blinkit','zepto','dmart','grofers','instamart','more retail','reliance fresh','spencer','jiomart','supermarket','kirana','grocery','nature basket','licious','country delight']},
+  {cat:'Fuel',                kw:['petrol','fuel','hpcl','bpcl','iocl','indian oil','bharat petro','hp petro','shell','nayara','gas station']},
+  {cat:'Travel',              kw:['irctc','uber','ola','rapido','makemytrip','goibibo','yatra','cleartrip','indigo','air india','vistara','spicejet','akasa','redbus','oyo','airbnb','booking.com','emt','ixigo','abhibus','metro','toll','fastag','paytm fastag']},
+  {cat:'Shopping',            kw:['amazon','flipkart','myntra','ajio','meesho','nykaa','tatacliq','snapdeal','decathlon','ikea','croma','reliance digital','vijay sales','lifestyle','shoppers stop','westside','zara','h&m','pantaloons','firstcry','pepperfry','urban ladder']},
+  {cat:'Medical',             kw:['pharmacy','apollo','medplus','1mg','pharmeasy','netmeds','hospital','clinic','diagnostic','lab','practo','dental','medical','wellness forever','truemeds']},
+  {cat:'Education',           kw:['school','college','university','tuition','course','udemy','coursera','byju','unacademy','vedantu','fees','skill nation','edtech','upgrad']},
+  {cat:'Entertainment',       kw:['netflix','prime video','hotstar','spotify','youtube','sony liv','zee5','jiocinema','bookmyshow','pvr','inox','cinema','gaming','playstation','steam','apple.com','google play','audible','kindle']},
+  {cat:'Cash Withdrawal',     kw:['atm','atw','nwd','cash wdl','cash withdrawal','cwdr','self cash']},
+  {cat:'Bank Charges',        kw:['charges','chrg','fee','penalty','amb ','min bal','sms alert','annual fee','processing fee','late fee','bounce','return charge','ecs rtn','cheque return','gst @','igst','cgst','sgst']},
+  {cat:'Tax/TDS',             kw:['tds','income tax','gst pmt','advance tax','self assessment','itns','tax paid','professional tax','tin ']},
+  {cat:'Transfer to Self',    kw:['self','own account','to self','transfer to own','sweep','fd booking','rd instal','linked account']},
+];
+function categorise(t){
+  const n = (t.narration||'').toLowerCase();
+  const cp = (t.counterparty||'').toUpperCase();
+  if(S.learned[cp]) return S.learned[cp];                       // user's own rule always wins
+  if(t.credit>0 && /salary|payroll|sal cr/.test(n)) return 'Salary';
+  for(const r of CATEGORY_RULES){
+    for(const k of r.kw){ if(n.includes(k)) return r.cat; }
+  }
+  if(t.credit>0 && /refund|reversal|cashback|rev /.test(n)) return 'Other';
+  if(t.credit>0) return 'Other';
+  return 'Other';
+}
+function classify(t){
+  t.channel = detectChannel(t.narration);
+  // For channels where the "merchant" is meaningless, use the channel itself.
+  // This also keeps the recurring detector from splitting ATM withdrawals
+  // across a dozen different branch names.
+  if(t.channel==='ATM' || /cash w(i)?thdr|cash wdl/i.test(t.narration)) t.counterparty = 'ATM Withdrawal';
+  else if(t.channel==='Bank Charges' && !/upi|neft|imps/i.test(t.narration)) t.counterparty = 'Bank Charges';
+  else if(t.channel==='Cash') t.counterparty = 'Cash';
+  else t.counterparty = extractCounterparty(t.narration);
+  t.category = categorise(t);
+  return t;
+}
+function loadLearned(){
+  try{ S.learned = JSON.parse(localStorage.getItem('siq_rules')||'{}'); }catch(e){ S.learned={}; }
+}
+function saveLearned(){
+  try{ localStorage.setItem('siq_rules', JSON.stringify(S.learned)); }catch(e){}
+}
+
+/* ============================================================================
+   7. INTEGRITY VALIDATION
+   ========================================================================== */
+function checkIntegrity(rows, pagesText){
+  const res = {rows:rows.length, credits:0, debits:0, opening:null, closing:null, ok:null, diff:0, breaks:[], dupes:[]};
+  rows.forEach(r=>{ res.credits += r.credit; res.debits += r.debit; });
+
+  // Prefer the balance column: the row before the first transaction gives the
+  // opening balance implicitly (first balance minus that row's movement).
+  const withBal = rows.filter(r=>r.balance!==null && !isNaN(r.balance));
+  if(withBal.length){
+    const f = withBal[0], l = withBal[withBal.length-1];
+    res.opening = f.balance - f.credit + f.debit;
+    res.closing = l.balance;
+  }
+  // If the statement prints the words, trust those instead.
+  if(pagesText){
+    const o = pagesText.match(/opening\s*balance[^0-9\-]{0,20}([\d,]+\.?\d*)/i);
+    const c = pagesText.match(/closing\s*balance[^0-9\-]{0,20}([\d,]+\.?\d*)/i);
+    if(o){ const p=parseAmt(o[1]); if(p) res.opening=p.v; }
+    if(c){ const p=parseAmt(c[1]); if(p) res.closing=p.v; }
+  }
+  if(res.opening!==null && res.closing!==null){
+    const expected = res.opening + res.credits - res.debits;
+    res.diff = +(expected - res.closing).toFixed(2);
+    res.ok = Math.abs(res.diff) < 1;
+  }
+  // Row-by-row balance continuity: each balance must equal the previous one
+  // adjusted by that row's movement. A break means a missed or garbled row.
+  let prev = null;
+  for(const r of rows){
+    if(r.balance===null||isNaN(r.balance)){ continue; }
+    if(prev!==null){
+      const expect = prev + r.credit - r.debit;
+      if(Math.abs(expect - r.balance) > 1){
+        res.breaks.push({date:fmtDate(r.date), narration:r.narration, expected:expect, found:r.balance, diff:+(r.balance-expect).toFixed(2)});
+      }
+    }
+    prev = r.balance;
+  }
+  // Duplicate detection: same date, same amount, same narration.
+  const seen = {};
+  for(const r of rows){
+    const k = dayKey(r.date)+'|'+r.debit.toFixed(2)+'|'+r.credit.toFixed(2)+'|'+r.narration.slice(0,40);
+    if(seen[k]) res.dupes.push(r); else seen[k]=1;
+  }
+  return res;
+}
+
+/* ============================================================================
+   8. CREDIT CARD SUMMARY BLOCK
+   Cards print a summary panel that has nothing to do with the transaction
+   table, so it is scraped separately out of the raw page text.
+   ========================================================================== */
+function grabAmount(text, labels){
+  for(const l of labels){
+    const rx = new RegExp(l.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + "[^0-9\\-\\(]{0,40}(\\(?-?(?:Rs\\.?|INR|₹)?\\s?[\\d,]+\\.?\\d{0,2}\\)?\\s?(?:Dr|Cr)?)", 'i');
+    const m = text.match(rx);
+    if(m){ const p = parseAmt(m[1]); if(p) return p.v; }
+  }
+  return null;
+}
+function grabDate(text, labels){
+  for(const l of labels){
+    const rx = new RegExp(l.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + "[^0-9A-Za-z]{0,25}([0-9]{1,2}[\\-\\/ ][0-9A-Za-z]{2,9}[\\-\\/ ][0-9]{2,4})", 'i');
+    const m = text.match(rx);
+    if(m){ const d = parseDate(m[1]); if(d) return d; }
+  }
+  return null;
+}
+function parseCardSummary(text, name){
+  const c = {source:name};
+  c.issuer = (text.match(/\b(HDFC|ICICI|SBI ?Card|SBI|Axis|Kotak|IDFC ?FIRST|IDFC|Yes ?Bank|American Express|AMEX|RBL|IndusInd|Standard Chartered|HSBC|AU ?Small|Federal|Citi)\b/i)||[])[1] || '—';
+  const l4 = text.match(/(?:x{2,}|X{2,}|\*{2,})\s?(\d{4})\b/);
+  c.last4 = l4 ? l4[1] : ((text.match(/\b\d{4}\s?[Xx*]{4,}\s?[Xx*]{4,}\s?(\d{4})\b/)||[])[1] || '••••');
+  const nm = text.match(/(?:card ?holder|name of (?:the )?card ?holder|dear)\s*:?\s*(?:Mr\.?|Ms\.?|Mrs\.?)?\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})/);
+  c.holder = nm ? nm[1].trim() : '—';
+  c.stmtDate = grabDate(text, ['statement date','statement generation date','bill date','statement period ending']);
+  c.dueDate  = grabDate(text, ['payment due date','due date','pay by date']);
+  const per = text.match(/statement period[^0-9]{0,20}([0-9]{1,2}[\-\/ ][0-9A-Za-z]{2,9}[\-\/ ][0-9]{2,4})\s*(?:to|-|–)\s*([0-9]{1,2}[\-\/ ][0-9A-Za-z]{2,9}[\-\/ ][0-9]{2,4})/i);
+  c.periodFrom = per ? parseDate(per[1]) : null;
+  c.periodTo   = per ? parseDate(per[2]) : null;
+  c.opening   = grabAmount(text, ['opening balance','previous balance','past dues','previous statement balance']);
+  c.payments  = grabAmount(text, ['payments and credits','payment/credits','payments, reversals','payments received','credits/payments']);
+  c.purchases = grabAmount(text, ['purchases and other charges','purchase/debits','debits and other charges','total purchases','new debits']);
+  c.totalDue  = grabAmount(text, ['total amount due','total dues','total payment due','closing balance']);
+  c.minDue    = grabAmount(text, ['minimum amount due','minimum payment due','min amount due','minimum due']);
+  c.limit     = grabAmount(text, ['total credit limit','credit limit']);
+  c.availLimit= grabAmount(text, ['available credit limit','available credit']);
+  c.cashLimit = grabAmount(text, ['available cash limit','cash limit']);
+  c.rpOpening = grabAmount(text, ['opening (?:reward )?points','points opening balance','opening points balance']);
+  c.rpEarned  = grabAmount(text, ['points earned','earned points','reward points earned']);
+  c.rpRedeemed= grabAmount(text, ['points redeemed','redeemed points','points adjusted']);
+  c.rpClosing = grabAmount(text, ['closing (?:reward )?points','total points balance','points balance','closing points']);
+  return c;
+}
+
+/* ============================================================================
+   9. UI PRIMITIVES
+   ========================================================================== */
+function toast(msg, type){
+  const d = document.createElement('div');
+  d.className = 'toast' + (type ? ' '+type : '');
+  d.textContent = msg;
+  document.getElementById('toasts').appendChild(d);
+  setTimeout(()=>{ d.style.opacity='0'; setTimeout(()=>d.remove(),300); }, 4200);
+}
+function setStep(n){
+  document.querySelectorAll('.step').forEach(el=>{
+    const s = +el.dataset.step;
+    el.classList.toggle('active', s===n);
+    el.classList.toggle('done', s<n);
+  });
+}
+function switchPanel(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on', p.id===id));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.panel===id));
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+document.querySelectorAll('.tab').forEach(t=> t.onclick = ()=>switchPanel(t.dataset.panel));
+document.querySelectorAll('.subtab').forEach(t=> t.onclick = ()=>{
+  document.querySelectorAll('.subtab').forEach(x=>x.classList.toggle('on', x===t));
+  document.querySelectorAll('.rcpanel').forEach(p=> p.style.display = (p.id===t.dataset.sub?'block':'none'));
+});
+function prog(pct, txt){
+  const w = document.getElementById('progWrap');
+  w.style.display = pct===null ? 'none' : 'block';
+  if(pct!==null){ document.getElementById('progBar').style.width = pct+'%'; document.getElementById('progTxt').textContent = txt||''; }
+}
+
+/* ============================================================================
+   10. FILE PIPELINE
+   ========================================================================== */
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+drop.onclick = ()=>fileInput.click();
+drop.onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fileInput.click(); } };
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hot');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot');}));
+drop.addEventListener('drop', e=>{ if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+fileInput.onchange = ()=>{ if(fileInput.files.length) handleFiles(fileInput.files); fileInput.value=''; };
+
+let batchPassword = null;   // "use for all" password, kept in memory only
+
+// Ask for a password. The value is never stored, logged or exported.
+function askPassword(fileName, wasWrong){
+  return new Promise(resolve=>{
+    const m = document.getElementById('pwModal');
+    document.getElementById('pwFile').textContent = fileName;
+    document.getElementById('pwErr').style.display = wasWrong ? 'flex' : 'none';
+    const input = document.getElementById('pwInput');
+    input.value=''; document.getElementById('pwAll').checked = false;
+    m.classList.add('on'); setTimeout(()=>input.focus(),50);
+    const done = val=>{
+      m.classList.remove('on');
+      document.getElementById('pwOk').onclick=null;
+      document.getElementById('pwSkip').onclick=null;
+      input.onkeydown=null;
+      input.value='';                                  // wipe immediately
+      resolve(val);
+    };
+    document.getElementById('pwOk').onclick = ()=>{
+      const v = input.value;
+      if(document.getElementById('pwAll').checked) batchPassword = v;
+      done(v);
+    };
+    document.getElementById('pwSkip').onclick = ()=>done(null);
+    input.onkeydown = e=>{ if(e.key==='Enter') document.getElementById('pwOk').click(); };
+  });
+}
+
+async function handleFiles(fileList){
+  document.getElementById('uploadEmpty').style.display='none';
+  const files = Array.from(fileList);
+  setStep(1);
+  for(let n=0;n<files.length;n++){
+    const f = files[n];
+    const rec = {id:'f'+Date.now()+'-'+n, name:f.name, size:f.size, status:'Parsing', note:''};
+    S.files.push(rec); renderFiles();
+    prog(Math.round(n/files.length*100), 'Reading '+f.name+' …');
+    try{
+      await parseOne(f, rec);
+    }catch(err){
+      rec.status='Failed'; rec.note = (err && err.message) ? err.message.slice(0,90) : 'Could not read this file';
+      toast('Could not read '+f.name+' — continuing with the rest.', 'err');
+      console.warn(err);
+    }
+    renderFiles();
+    await yieldUI();
+  }
+  prog(null);
+  batchPassword = null;
+  if(S.sets.length){ renderMapping(); setStep(2); }
+  else { document.getElementById('uploadEmpty').style.display = S.files.length?'none':'block'; }
+}
+
+async function parseOne(file, rec){
+  const ext = (file.name.split('.').pop()||'').toLowerCase();
+  let grid, headerIdx, pagesText='', kind='bank';
+
+  if(ext === 'pdf'){
+    let pages = null, pw = batchPassword, tries = 0, wrong = false;
+    while(!pages){
+      try{
+        pages = await readPdf(file, pw, (p,t)=>prog(Math.round(p/t*100), file.name+' · page '+p+' of '+t));
+      }catch(e){
+        if(e.needsPassword){
+          rec.status='Password needed'; renderFiles();
+          const entered = await askPassword(file.name, wrong || e.wrong);
+          if(entered===null){ rec.status='Skipped'; rec.note='No password supplied'; return; }
+          pw = entered; wrong = true; tries++;
+          if(tries>6){ rec.status='Failed'; rec.note='Password not accepted'; return; }
+        }else throw e;
+      }
+    }
+    pagesText = pages.map(p=>p.raw).join('\n');
+    const textLen = pagesText.replace(/\s/g,'').length;
+
+    // A page with essentially no text layer is a scan. Offer OCR.
+    if(textLen < 120 * pages.length){
+      const go = confirm('"'+file.name+'" looks like a scanned image with no text layer.\n\nRun OCR on it? Accuracy on financial figures is NOT guaranteed and every figure must be checked against the original.');
+      if(!go){ rec.status='Skipped'; rec.note='Scanned file, OCR declined'; return; }
+      const ocr = await runOcr(pages, file.name);
+      pagesText = ocr.text;
+      grid = ocr.grid; headerIdx = 0;
+      rec.note = 'OCR — verify every figure';
+    }
+    if(!grid){
+      const colDef = detectColumns(pages);
+      if(!colDef){
+        rec.status='Failed';
+        rec.note='No transaction table found. Check this is a statement, not a summary page.';
+        return;
+      }
+      grid = pdfToGrid(pages, colDef);
+      headerIdx = 0;
+    }
+  }else{
+    grid = await readSheet(file);
+    headerIdx = findHeaderRow(grid);
+    pagesText = grid.slice(0, headerIdx+1).flat().join(' ');
+  }
+
+  // Card statements announce themselves in the summary block.
+  if(/minimum amount due|total amount due|credit limit|payment due date|reward points/i.test(pagesText)) kind='card';
+
+  const ds = {
+    id:'d'+S.sets.length, name:file.name, kind:kind, grid:grid, headerIdx:headerIdx,
+    roles: rolesFromHeader(grid[headerIdx]||[]), pagesText:pagesText
+  };
+  ds.rows = buildRows(ds);
+  if(!ds.rows.length){
+    rec.status='Failed'; rec.note='Table found but no rows parsed. Fix the column mapping and retry.';
+    S.sets.push(ds); renderMapping(); return;
+  }
+  if(kind==='card'){
+    const cm = parseCardSummary(pagesText, file.name);
+    cm.setId = ds.id;
+    ds.card = cm; S.cardMeta.push(cm);
+  }
+  S.sets.push(ds);
+  rec.status='Parsed';
+  rec.kind=kind;
+  rec.note = ds.rows.length + ' rows' + (ds.errors.length ? ' · '+ds.errors.length+' problem rows' : '');
+  if(ds.ambiguousDates) rec.note += ' · '+ds.ambiguousDates+' ambiguous dates read as DD/MM';
+}
+
+// OCR fallback. Renders each page to a canvas and reads it with Tesseract,
+// then rebuilds a crude grid by splitting lines on runs of whitespace.
+async function runOcr(pages, name){
+  toast('Running OCR on '+name+'. This takes a while.', '');
+  const worker = await Tesseract.createWorker('eng');
+  let text = '';
+  const grid = [['Date','Narration','Debit','Credit','Balance']];
+  for(let i=0;i<pages.length;i++){
+    prog(Math.round(i/pages.length*100), 'OCR page '+(i+1)+' of '+pages.length+' …');
+    const page = await pages.pdfDoc.getPage(i+1);
+    const vp = page.getViewport({scale:2.2});
+    const canvas = document.createElement('canvas');
+    canvas.width = vp.width; canvas.height = vp.height;
+    await page.render({canvasContext:canvas.getContext('2d'), viewport:vp}).promise;
+    const {data} = await worker.recognize(canvas);
+    text += '\n' + data.text;
+    data.text.split('\n').forEach(line=>{
+      const t = line.trim();
+      if(!t || isNoise(t)) return;
+      const parts = t.split(/\s{2,}/).map(x=>x.trim()).filter(Boolean);
+      if(parts.length>=3 && parseDate(parts[0])) grid.push(parts);
+    });
+    await yieldUI();
+  }
+  await worker.terminate();
+  return {text, grid};
+}
+
+function renderFiles(){
+  const el = document.getElementById('fileList');
+  if(!S.files.length){ el.innerHTML=''; return; }
+  el.innerHTML = S.files.map(f=>{
+    const cls = f.status==='Parsed'?'ok': (f.status==='Failed'||f.status==='Skipped')?'bad':'warn';
+    return '<div class="filerow"><div style="flex:1"><div class="nm">'+esc(f.name)+'</div>'+
+      '<div class="meta">'+(f.kind? (f.kind==='card'?'Credit card · ':'Bank · '):'')+Math.round(f.size/1024)+' KB'+(f.note?' · '+esc(f.note):'')+'</div></div>'+
+      '<span class="tag '+cls+'">'+f.status+'</span></div>';
+  }).join('');
+}
+
+/* ============================================================================
+   11. COLUMN MAPPING PANEL — the user's override
+   ========================================================================== */
+function renderMapping(){
+  const box = document.getElementById('mapCard');
+  if(!S.sets.length){ box.style.display='none'; return; }
+  box.style.display='block';
+  const roleOpts = ['ignore','date','valuedate','narration','ref','debit','credit','amount','drcr','balance'];
+  document.getElementById('mapBody').innerHTML = S.sets.map((ds,si)=>{
+    const head = ds.grid[ds.headerIdx]||[];
+    const sample = ds.grid[ds.headerIdx+1]||[];
+    return '<div style="margin-bottom:18px"><div class="row" style="margin-bottom:8px">'+
+      '<b>'+esc(ds.name)+'</b><span class="tag">'+(ds.kind==='card'?'Credit card':'Bank')+'</span>'+
+      '<span class="tag '+(ds.errors&&ds.errors.length?'bad':'ok')+'">'+ds.rows.length+' rows parsed'+(ds.errors&&ds.errors.length?' · '+ds.errors.length+' problem':'')+'</span></div>'+
+      '<div class="tblwrap" style="max-height:none"><table><thead><tr><th>Column in file</th><th>First value</th><th>Role</th></tr></thead><tbody>'+
+      head.map((h,ci)=>'<tr><td><b>'+esc(h||'(blank)')+'</b></td><td class="num">'+esc(sample[ci]||'')+'</td><td>'+
+        '<select data-set="'+si+'" data-col="'+ci+'" class="mapsel">'+
+        roleOpts.map(r=>'<option value="'+r+'"'+(ds.roles[ci]===r?' selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('')+
+        '</select></td></tr>').join('')+
+      '</tbody></table></div></div>';
+  }).join('') + '<div class="row"><button class="btn primary" id="btnApplyMap">Apply mapping and continue →</button>'+
+    '<span class="hint" style="margin:0">Roles you change are re-parsed immediately.</span></div>';
+
+  document.querySelectorAll('.mapsel').forEach(sel=> sel.onchange = ()=>{
+    const ds = S.sets[+sel.dataset.set];
+    ds.roles[+sel.dataset.col] = sel.value;
+    ds.rows = buildRows(ds);
+    toast('Re-parsed '+ds.name+' — '+ds.rows.length+' rows.');
+    renderMapping();
+  });
+  document.getElementById('btnApplyMap').onclick = ()=>{ buildReview(); setStep(3); };
+}
+
+/* ============================================================================
+   12. REVIEW & CORRECT TABLE
+   ========================================================================== */
+function allRows(){ return S.sets.flatMap(d=>d.rows); }
+
+function buildReview(){
+  const card = document.getElementById('reviewCard');
+  card.style.display='block';
+  renderReview();
+  card.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function renderReview(){
+  const q = (document.getElementById('revSearch').value||'').toLowerCase();
+  const errOnly = document.getElementById('revErrOnly').checked;
+  const probIds = new Set();
+  S.sets.forEach(d=> (d.errors||[]).forEach(()=>{}) );
+  let rows = allRows();
+  if(q) rows = rows.filter(r=>r.narration.toLowerCase().includes(q));
+  if(errOnly) rows = rows.filter(r=> !r.date || (!r.debit && !r.credit));
+  const shown = rows.slice(0,400);
+  const errs = S.sets.flatMap(d=>(d.errors||[]).map(e=>Object.assign({file:d.name}, e)));
+
+  let html = '<thead><tr><th>Date</th><th>Narration</th><th>Reference</th><th class="r">Debit</th><th class="r">Credit</th><th class="r">Balance</th><th>Source</th></tr></thead><tbody>';
+  html += shown.map(r=>{
+    const bad = !r.date || (!r.debit && !r.credit);
+    return '<tr'+(bad?' style="background:#FDEBE5"':'')+'>'+
+      '<td class="num" contenteditable data-id="'+r.id+'" data-f="date">'+fmtDate(r.date)+'</td>'+
+      '<td contenteditable data-id="'+r.id+'" data-f="narration">'+esc(r.narration)+'</td>'+
+      '<td class="num" contenteditable data-id="'+r.id+'" data-f="ref">'+esc(r.ref)+'</td>'+
+      '<td class="num r dr" contenteditable data-id="'+r.id+'" data-f="debit">'+(r.debit?r.debit.toFixed(2):'')+'</td>'+
+      '<td class="num r cr" contenteditable data-id="'+r.id+'" data-f="credit">'+(r.credit?r.credit.toFixed(2):'')+'</td>'+
+      '<td class="num r" contenteditable data-id="'+r.id+'" data-f="balance">'+(r.balance===null?'':r.balance.toFixed(2))+'</td>'+
+      '<td style="font-size:11px;color:var(--ink-faint)">'+esc(r.source)+'</td></tr>';
+  }).join('');
+  if(errs.length){
+    html += '<tr><td colspan="7" style="background:var(--charcoal);color:#fff;font-weight:600">Rows that could not be parsed ('+errs.length+') — these are listed, never dropped</td></tr>';
+    html += errs.slice(0,60).map(e=>'<tr><td class="num">line '+e.line+'</td><td colspan="5" style="color:var(--rust)">'+esc(e.raw.slice(0,180))+'</td><td style="font-size:11px">'+esc(e.why)+'</td></tr>').join('');
+  }
+  html += '</tbody>';
+  document.getElementById('revTbl').innerHTML = html;
+  if(rows.length>400) toast('Showing the first 400 rows here. All '+rows.length+' are analysed and exported.');
+
+  // Inline edits write straight back into the parsed row objects.
+  document.querySelectorAll('#revTbl [contenteditable]').forEach(td=>{
+    td.onblur = ()=>{
+      const r = allRows().find(x=>x.id===td.dataset.id);
+      if(!r) return;
+      const f = td.dataset.f, v = td.textContent.trim();
+      if(f==='date'){ const d=parseDate(v); if(d) r.date=d; else { toast('That date could not be read.','err'); td.textContent=fmtDate(r.date); } }
+      else if(f==='debit'||f==='credit'||f==='balance'){ const p=parseAmt(v); r[f] = p ? p.v : (f==='balance'?null:0); }
+      else r[f]=v;
+    };
+  });
+}
+document.getElementById('revSearch').oninput = renderReview;
+document.getElementById('revErrOnly').onchange = renderReview;
+document.getElementById('btnAnalyse').onclick = ()=>{ runAnalysis(); };
+
+/* ============================================================================
+   13. ANALYSIS ORCHESTRATOR
+   ========================================================================== */
+function runAnalysis(){
+  S.txns = allRows().map(r=>classify(r));
+  S.txns.sort((a,b)=>a.date-b.date);
+  const bankN = S.txns.filter(t=>t.kind==='bank').length;
+  const cardN = S.txns.filter(t=>t.kind==='card').length;
+  document.getElementById('pillBank').textContent = bankN;
+  document.getElementById('pillCard').textContent = cardN;
+  if(bankN) renderBank();
+  if(cardN) renderCard();
+  renderConsolidation();
+  fillPeriodSelects();
+  setStep(4);
+  switchPanel(bankN ? 'pBank' : 'pCard');
+  toast('Analysed '+S.txns.length+' transactions across '+S.sets.length+' statement(s).','ok');
+}
+
+function bankTxns(){ return S.txns.filter(t=>t.kind==='bank'); }
+function cardTxns(){ return S.txns.filter(t=>t.kind==='card'); }
+
+function chart(id, cfg){
+  if(S.charts[id]) S.charts[id].destroy();
+  const ctx = document.getElementById(id);
+  if(!ctx) return;
+  const ink = getComputedStyle(document.body).getPropertyValue('--ink').trim();
+  Chart.defaults.font.family = "'Poppins',sans-serif";
+  Chart.defaults.color = ink;
+  S.charts[id] = new Chart(ctx, cfg);
+}
+const PALETTE = ['#F5B301','#E2582B','#177245','#0E0E10','#7A5CFA','#0FA3B1','#C1440E','#8A6100','#4B7BE5','#B5179E','#2A9D8F','#9C6644','#6A994E','#BC4749','#457B9D','#A98467','#5F0F40','#3D348B','#D4A373','#565264'];
+
+/* Recurring / subscription detection.
+   Group by counterparty, then look for three or more debits of a similar
+   amount whose gaps cluster around 30, 90 or 365 days. Annualised cost is
+   the average amount times the number of times it will hit in a year. */
+function detectRecurring(txns){
+  const groups = {};
+  // Card bill payments and transfers to your own accounts recur every month,
+  // but they are settlements rather than spending — listing them here would
+  // both mislead and double count against the card's own transactions.
+  txns.filter(t=>t.debit>0 && t.category!=='Credit Card Payment' && t.category!=='Transfer to Self').forEach(t=>{
+    (groups[t.counterparty] = groups[t.counterparty] || []).push(t);
+  });
+  const out = [];
+  for(const k in groups){
+    let g = groups[k].sort((a,b)=>a.date-b.date);
+    if(g.length < 2) continue;
+    // Keep only the amounts close to the median, so one large one-off payment
+    // to a regular merchant does not masquerade as a subscription — while
+    // still tolerating the normal drift in an EMI or a utility bill.
+    const sortedAmts = g.map(t=>t.debit).sort((a,b)=>a-b);
+    const median = sortedAmts[Math.floor(sortedAmts.length/2)];
+    g = g.filter(t => Math.abs(t.debit - median) <= median * 0.4);
+    if(g.length < 2) continue;
+    const gaps = [];
+    for(let i=1;i<g.length;i++) gaps.push(daysBetween(g[i-1].date, g[i].date));
+    const avgGap = gaps.reduce((a,b)=>a+b,0)/gaps.length;
+    if(!avgGap || avgGap < 6) continue;
+    let cadence = null;
+    if(avgGap>=24 && avgGap<=38) cadence='Monthly';
+    else if(avgGap>=80 && avgGap<=100) cadence='Quarterly';
+    else if(avgGap>=170 && avgGap<=195) cadence='Half-yearly';
+    else if(avgGap>=330 && avgGap<=400) cadence='Yearly';
+    else if(avgGap>=6 && avgGap<=9) cadence='Weekly';
+    if(!cadence) continue;
+    if(g.length<3 && cadence!=='Yearly' && cadence!=='Half-yearly') continue;
+    const avgAmt = g.reduce((a,b)=>a+b.debit,0)/g.length;
+    const perYear = {Weekly:52, Monthly:12, Quarterly:4, 'Half-yearly':2, Yearly:1}[cadence];
+    out.push({
+      counterparty: g[0].counterparty, category: g[0].category, cadence: cadence,
+      count: g.length, avg: avgAmt, total: g.reduce((a,b)=>a+b.debit,0),
+      annual: avgAmt*perYear, last: g[g.length-1].date, channel: g[0].channel
+    });
+  }
+  return out.sort((a,b)=>b.annual-a.annual);
+}
+
+// Salary: recurring credits of a similar size landing on a similar day.
+function detectSalary(txns){
+  const creds = txns.filter(t=>t.credit>0);
+  const byCp = {};
+  creds.forEach(t=>{
+    const k = /salary|payroll/i.test(t.narration) ? 'SALARY::'+t.counterparty : t.counterparty;
+    (byCp[k]=byCp[k]||[]).push(t);
+  });
+  let best = null;
+  for(const k in byCp){
+    const g = byCp[k].sort((a,b)=>a.date-b.date);
+    if(g.length<2) continue;
+    const amts = g.map(t=>t.credit);
+    const avg = amts.reduce((a,b)=>a+b,0)/amts.length;
+    const spread = (Math.max(...amts)-Math.min(...amts))/avg;
+    const gaps=[]; for(let i=1;i<g.length;i++) gaps.push(daysBetween(g[i-1].date,g[i].date));
+    const avgGap = gaps.reduce((a,b)=>a+b,0)/gaps.length;
+    const monthly = avgGap>=24 && avgGap<=38;
+    const named = k.startsWith('SALARY::');
+    if(!(monthly && (spread<0.35 || named))) continue;
+    const score = avg * (named?2:1) * g.length;
+    if(!best || score>best.score) best = {score, name:g[0].counterparty, avg, min:Math.min(...amts), max:Math.max(...amts), count:g.length, txns:g};
+  }
+  return best;
+}
+
+/* ============================================================================
+   14. BANK MODULE RENDER
+   ========================================================================== */
+function renderBank(){
+  const t = bankTxns();
+  if(!t.length) return;
+  document.getElementById('bankEmpty').style.display='none';
+  document.getElementById('bankBody').style.display='block';
+
+  // -------- integrity banner --------
+  const bankSets = S.sets.filter(d=>d.kind==='bank');
+  let ih = '';
+  bankSets.forEach(ds=>{
+    const chk = checkIntegrity(ds.rows, ds.pagesText);
+    ds.integrity = chk;
+    if(chk.ok===true){
+      ih += '<div class="banner ok"><span>✓</span><div><b>'+esc(ds.name)+' reconciles.</b> Opening '+inr(chk.opening)+' + credits '+inr(chk.credits)+' − debits '+inr(chk.debits)+' = closing '+inr(chk.closing)+'. '+chk.rows+' rows read.</div></div>';
+    }else if(chk.ok===false){
+      ih += '<div class="banner bad"><span>!</span><div><b>'+esc(ds.name)+' does not reconcile — difference '+inr(Math.abs(chk.diff))+'.</b> Expected closing '+inr(chk.opening+chk.credits-chk.debits)+', statement says '+inr(chk.closing)+'. Check the review table before you rely on these figures.</div></div>';
+    }else{
+      ih += '<div class="banner warn"><span>?</span><div><b>'+esc(ds.name)+':</b> no opening or closing balance found, so the arithmetic check could not run. '+chk.rows+' rows read.</div></div>';
+    }
+    if(chk.breaks.length) ih += '<div class="banner warn"><span>!</span><div><b>'+chk.breaks.length+' balance break'+(chk.breaks.length>1?'s':'')+'</b> in '+esc(ds.name)+' — usually a missed or mis-parsed row. First at '+esc(chk.breaks[0].date)+', off by '+inr(chk.breaks[0].diff)+'.</div></div>';
+    if(chk.dupes.length) ih += '<div class="banner warn"><span>⧉</span><div><b>'+chk.dupes.length+' possible duplicate row'+(chk.dupes.length>1?'s':'')+'</b> — same date, amount and narration. Listed on the Errors &amp; Warnings sheet of the export.</div></div>';
+    if(ds.errors && ds.errors.length) ih += '<div class="banner bad"><span>✕</span><div><b>'+ds.errors.length+' row'+(ds.errors.length>1?'s':'')+' failed to parse</b> in '+esc(ds.name)+'. They are listed at the bottom of the review table and in the export.</div></div>';
+  });
+  document.getElementById('bankIntegrity').innerHTML = ih;
+
+  // -------- headline stats --------
+  const inflow = t.reduce((a,b)=>a+b.credit,0);
+  const outflow = t.reduce((a,b)=>a+b.debit,0);
+  const self = t.filter(x=>x.category==='Transfer to Self').reduce((a,b)=>a+b.debit,0);
+  const months = new Set(t.map(x=>monthKey(x.date))).size || 1;
+  const charges = t.filter(x=>x.category==='Bank Charges').reduce((a,b)=>a+b.debit,0);
+  const chargeN = t.filter(x=>x.category==='Bank Charges').length;
+  const cash = t.filter(x=>x.category==='Cash Withdrawal' || x.channel==='ATM');
+  const cashTot = cash.reduce((a,b)=>a+b.debit,0);
+  const emi = t.filter(x=>x.category==='EMI & Loan' && x.debit>0);
+  const emiMonthly = emi.length ? emi.reduce((a,b)=>a+b.debit,0)/months : 0;
+  const net = inflow - outflow;
+  const bals = t.filter(x=>x.balance!==null);
+  const low = bals.length ? bals.reduce((a,b)=> b.balance<a.balance?b:a) : null;
+
+  const stat = (l,v,s,cls,accent)=>'<div class="stat'+(accent?' accent':'')+'"><div class="lbl">'+l+'</div><div class="stat-val '+(cls||'')+'">'+v+'</div><div class="sub">'+(s||'')+'</div></div>';
+  document.getElementById('bankStats').innerHTML =
+    stat('Total inflow', inr(inflow), inr(inflow/months)+' a month', 'pos', true) +
+    stat('Total outflow', inr(outflow), inr(outflow/months)+' a month', 'neg') +
+    stat(net>=0?'Net surplus':'Net deficit', inr(net), 'over '+months+' month'+(months>1?'s':''), net>=0?'pos':'neg') +
+    stat('Bank charges &amp; fees', inr(charges), chargeN+' charge'+(chargeN===1?'':'s')+' — most people never add this up', charges>0?'neg':'') +
+    stat('Cash withdrawn', inr(cashTot), cash.length+' withdrawal'+(cash.length===1?'':'s')) +
+    stat('Monthly EMI commitment', inr(emiMonthly), emi.length+' instalment row'+(emi.length===1?'':'s')) +
+    stat('Self transfers excluded', inr(self), 'not counted as spending') +
+    stat('Lowest balance', low?inr(low.balance):'—', low?('on '+fmtDate(low.date)):'no balance column');
+
+  // -------- monthly income vs expense --------
+  const mk = {};
+  t.forEach(x=>{ const k=monthKey(x.date); if(!k) return; (mk[k]=mk[k]||{in:0,out:0}); mk[k].in+=x.credit; mk[k].out+=x.debit; });
+  const mKeys = Object.keys(mk).sort();
+  chart('chMonthly', {
+    type:'bar',
+    data:{labels:mKeys.map(monthLabel), datasets:[
+      {label:'Money in', data:mKeys.map(k=>mk[k].in), backgroundColor:'#177245', borderRadius:5},
+      {label:'Money out', data:mKeys.map(k=>mk[k].out), backgroundColor:'#E2582B', borderRadius:5}
+    ]},
+    options:{maintainAspectRatio:false, plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+inr(c.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>inrShort(v)}}}}
+  });
+
+  // -------- category donut (debits, self-transfers out) --------
+  const cat = {};
+  t.filter(x=>x.debit>0 && x.category!=='Transfer to Self').forEach(x=>{ cat[x.category]=(cat[x.category]||0)+x.debit; });
+  const cEntries = Object.entries(cat).sort((a,b)=>b[1]-a[1]);
+  const catTotal = cEntries.reduce((a,b)=>a+b[1],0);
+  chart('chCategory', {
+    type:'doughnut',
+    data:{labels:cEntries.map(e=>e[0]), datasets:[{data:cEntries.map(e=>e[1]), backgroundColor:PALETTE, borderWidth:2, borderColor:getComputedStyle(document.body).getPropertyValue('--surface')}]},
+    options:{maintainAspectRatio:false, cutout:'58%', plugins:{legend:{position:'right', labels:{boxWidth:10, font:{size:11}}},
+      tooltip:{callbacks:{label:c=>c.label+': '+inr(c.parsed)+' ('+pct(c.parsed,catTotal)+')'}}}}
+  });
+
+  // -------- daily balance line --------
+  const daily = {};
+  t.filter(x=>x.balance!==null).forEach(x=>{ daily[dayKey(x.date)] = x.balance; });
+  const dKeys = Object.keys(daily).sort();
+  if(dKeys.length){
+    const minV = Math.min(...dKeys.map(k=>daily[k]));
+    chart('chBalance', {
+      type:'line',
+      data:{labels:dKeys, datasets:[{
+        label:'Closing balance', data:dKeys.map(k=>daily[k]),
+        borderColor:'#0E0E10', backgroundColor:'rgba(245,179,1,.18)', fill:true, tension:.25,
+        pointRadius:dKeys.map(k=>daily[k]===minV?6:0),
+        pointBackgroundColor:'#E2582B', pointBorderColor:'#E2582B'
+      }]},
+      options:{maintainAspectRatio:false, plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:c=>inr(c.parsed.y) + (c.parsed.y===minV?'  ← lowest of the period':'')}}},
+        scales:{x:{ticks:{maxTicksLimit:12, font:{size:10}}}, y:{ticks:{callback:v=>inrShort(v)}}}}
+    });
+  }
+
+  // -------- recurring --------
+  const rec = detectRecurring(t);
+  const recAnnual = rec.reduce((a,b)=>a+b.annual,0);
+  document.getElementById('recurBox').innerHTML = rec.length ?
+    '<div class="banner warn" style="margin-bottom:10px"><span>↻</span><div><b>'+inr(recAnnual)+' a year</b> is committed to '+rec.length+' recurring payment'+(rec.length>1?'s':'')+' — that is '+inr(recAnnual/12)+' every month before you spend on anything else.</div></div>'+
+    '<div class="tblwrap" style="max-height:300px"><table><thead><tr><th>Counterparty</th><th>Cadence</th><th class="r">Typical</th><th class="r">Seen</th><th class="r">Annualised</th></tr></thead><tbody>'+
+    rec.slice(0,25).map(r=>'<tr><td><b>'+esc(r.counterparty)+'</b><br><span class="tag">'+esc(r.category)+'</span></td><td>'+r.cadence+'</td>'+
+      '<td class="num r">'+inr(r.avg)+'</td><td class="num r">'+r.count+'×</td><td class="num r"><b>'+inr(r.annual)+'</b></td></tr>').join('')+
+    '</tbody></table></div>'
+    : '<p class="hint">No recurring pattern found yet. Detection needs at least two or three cycles — load a longer period.</p>';
+
+  // -------- channel split --------
+  const ch = {};
+  t.filter(x=>x.debit>0).forEach(x=>{ ch[x.channel]=(ch[x.channel]||0)+x.debit; });
+  const chE = Object.entries(ch).sort((a,b)=>b[1]-a[1]);
+  chart('chChannel', {
+    type:'bar',
+    data:{labels:chE.map(e=>e[0]), datasets:[{data:chE.map(e=>e[1]), backgroundColor:'#F5B301', borderRadius:5}]},
+    options:{indexAxis:'y', maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>inr(c.parsed.x)}}},
+      scales:{x:{ticks:{callback:v=>inrShort(v)}}}}
+  });
+
+  // -------- top counterparties --------
+  const cp = {};
+  t.forEach(x=>{ const k=x.counterparty; (cp[k]=cp[k]||{d:0,c:0,n:0}); cp[k].d+=x.debit; cp[k].c+=x.credit; cp[k].n++; });
+  const cpE = Object.entries(cp).sort((a,b)=>(b[1].d+b[1].c)-(a[1].d+a[1].c)).slice(0,10);
+  document.getElementById('topCp').innerHTML = '<div class="tblwrap" style="max-height:340px"><table><thead><tr><th>Counterparty</th><th class="r">Paid out</th><th class="r">Received</th><th class="r">Txns</th></tr></thead><tbody>'+
+    cpE.map(e=>'<tr><td>'+esc(e[0])+'</td><td class="num r dr">'+(e[1].d?inr(e[1].d):'—')+'</td><td class="num r cr">'+(e[1].c?inr(e[1].c):'—')+'</td><td class="num r">'+e[1].n+'</td></tr>').join('')+'</tbody></table></div>';
+
+  // -------- salary & EMI --------
+  const sal = detectSalary(t);
+  let se = '';
+  if(sal){
+    const variance = sal.max - sal.min;
+    se += '<div class="banner ok"><span>₹</span><div><b>Salary credit detected: '+esc(sal.name)+'</b><br>Monthly average '+inr(sal.avg)+' across '+sal.count+' credits'+
+      (variance>1 ? '. Varies between '+inr(sal.min)+' and '+inr(sal.max)+' — a spread of '+inr(variance)+'.' : '. Identical every month.')+'</div></div>';
+  }else{
+    se += '<p class="hint">No regular salary pattern found. If this is a current account or the period is short, that is expected.</p>';
+  }
+  if(emi.length){
+    const byCp = {};
+    emi.forEach(x=>{ (byCp[x.counterparty]=byCp[x.counterparty]||{t:0,n:0}); byCp[x.counterparty].t+=x.debit; byCp[x.counterparty].n++; });
+    se += '<div class="tblwrap" style="max-height:260px;margin-top:10px"><table><thead><tr><th>Lender</th><th class="r">Instalments</th><th class="r">Total paid</th><th class="r">Per month</th></tr></thead><tbody>'+
+      Object.entries(byCp).sort((a,b)=>b[1].t-a[1].t).map(e=>'<tr><td>'+esc(e[0])+'</td><td class="num r">'+e[1].n+'</td><td class="num r dr">'+inr(e[1].t)+'</td><td class="num r">'+inr(e[1].t/months)+'</td></tr>').join('')+
+      '</tbody><tfoot><tr><td>Total commitment</td><td class="num r">'+emi.length+'</td><td class="num r">'+inr(emi.reduce((a,b)=>a+b.debit,0))+'</td><td class="num r">'+inr(emiMonthly)+'</td></tr></tfoot></table></div>';
+  }
+  document.getElementById('salaryEmi').innerHTML = se;
+
+  // -------- month-on-month category table --------
+  const mom = {};
+  t.filter(x=>x.debit>0).forEach(x=>{ const k=monthKey(x.date); (mom[x.category]=mom[x.category]||{})[k]=(mom[x.category][k]||0)+x.debit; });
+  const cats = Object.keys(mom).sort((a,b)=>{
+    const sa=mKeys.reduce((s,k)=>s+(mom[a][k]||0),0), sb=mKeys.reduce((s,k)=>s+(mom[b][k]||0),0);
+    return sb-sa;
+  });
+  document.getElementById('momTbl').innerHTML =
+    '<thead><tr><th>Category</th>'+mKeys.map(k=>'<th class="r">'+monthLabel(k)+'</th>').join('')+'<th class="r">Total</th></tr></thead><tbody>'+
+    cats.map(c=>{
+      const tot = mKeys.reduce((s,k)=>s+(mom[c][k]||0),0);
+      return '<tr><td><b>'+esc(c)+'</b></td>'+mKeys.map(k=>'<td class="num r">'+(mom[c][k]?inr(mom[c][k],0):'—')+'</td>').join('')+'<td class="num r"><b>'+inr(tot,0)+'</b></td></tr>';
+    }).join('')+
+    '</tbody><tfoot><tr><td>Total spend</td>'+mKeys.map(k=>'<td class="num r">'+inr(mk[k].out,0)+'</td>').join('')+'<td class="num r">'+inr(outflow,0)+'</td></tr></tfoot>';
+
+  fillTxFilters();
+  renderTxTable();
+}
+
+/* ---------- transaction table with filters, sorting and recategorisation ---- */
+function fillTxFilters(){
+  const t = bankTxns();
+  const cats = [...new Set(t.map(x=>x.category))].sort();
+  const chans = [...new Set(t.map(x=>x.channel))].sort();
+  const catSel = document.getElementById('txCat'), chSel = document.getElementById('txChan');
+  catSel.innerHTML = '<option value="">All categories</option>' + cats.map(c=>'<option>'+esc(c)+'</option>').join('');
+  chSel.innerHTML = '<option value="">All channels</option>' + chans.map(c=>'<option>'+esc(c)+'</option>').join('');
+}
+function filteredTx(){
+  const q=(document.getElementById('txSearch').value||'').toLowerCase();
+  const cat=document.getElementById('txCat').value, chn=document.getElementById('txChan').value;
+  const typ=document.getElementById('txType').value;
+  const from=document.getElementById('txFrom').value?new Date(document.getElementById('txFrom').value):null;
+  const to=document.getElementById('txTo').value?new Date(document.getElementById('txTo').value):null;
+  const mn=parseFloat(document.getElementById('txMin').value), mx=parseFloat(document.getElementById('txMax').value);
+  let rows = bankTxns().filter(t=>{
+    if(q && !(t.narration.toLowerCase().includes(q) || t.counterparty.toLowerCase().includes(q))) return false;
+    if(cat && t.category!==cat) return false;
+    if(chn && t.channel!==chn) return false;
+    if(typ==='dr' && !t.debit) return false;
+    if(typ==='cr' && !t.credit) return false;
+    if(from && t.date<from) return false;
+    if(to && t.date>new Date(to.getTime()+86399999)) return false;
+    const amt = t.debit||t.credit;
+    if(!isNaN(mn) && amt<mn) return false;
+    if(!isNaN(mx) && amt>mx) return false;
+    return true;
+  });
+  const s = S.sort.tx;
+  rows.sort((a,b)=>{
+    let va,vb;
+    if(s.k==='date'){ va=a.date; vb=b.date; }
+    else if(s.k==='amount'){ va=a.debit||a.credit; vb=b.debit||b.credit; }
+    else if(s.k==='balance'){ va=a.balance||0; vb=b.balance||0; }
+    else { va=String(a[s.k]||'').toLowerCase(); vb=String(b[s.k]||'').toLowerCase(); }
+    return (va>vb?1:va<vb?-1:0)*s.dir;
+  });
+  return rows;
+}
+function renderTxTable(){
+  const rows = filteredTx();
+  const dr = rows.reduce((a,b)=>a+b.debit,0), cr = rows.reduce((a,b)=>a+b.credit,0);
+  document.getElementById('txCount').textContent = rows.length+' transactions shown · debits '+inr(dr)+' · credits '+inr(cr)+' · net '+inr(cr-dr);
+  const allCats = [...new Set(CATEGORY_RULES.map(r=>r.cat).concat(['Other'], S.txns.map(t=>t.category)))].sort();
+  const arrow = k => S.sort.tx.k===k ? (S.sort.tx.dir>0?' ▲':' ▼') : '';
+  let html = '<thead><tr>'+
+    '<th class="sortable" data-k="date">Date'+arrow('date')+'</th>'+
+    '<th class="sortable" data-k="narration">Narration'+arrow('narration')+'</th>'+
+    '<th class="sortable" data-k="counterparty">Counterparty'+arrow('counterparty')+'</th>'+
+    '<th class="sortable" data-k="channel">Channel'+arrow('channel')+'</th>'+
+    '<th>Category</th>'+
+    '<th class="r sortable" data-k="amount">Debit'+arrow('amount')+'</th><th class="r">Credit</th>'+
+    '<th class="r sortable" data-k="balance">Balance'+arrow('balance')+'</th></tr></thead><tbody>';
+  html += rows.slice(0,800).map(t=>
+    '<tr><td class="num">'+fmtDate(t.date)+'</td>'+
+    '<td style="max-width:340px">'+esc(t.narration.slice(0,120))+'</td>'+
+    '<td>'+esc(t.counterparty)+'</td>'+
+    '<td><span class="tag">'+esc(t.channel)+'</span></td>'+
+    '<td><select class="catsel" data-id="'+t.id+'" style="font-size:11.5px;padding:3px 6px">'+
+      allCats.map(c=>'<option'+(c===t.category?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select></td>'+
+    '<td class="num r dr">'+(t.debit?inr(t.debit):'')+'</td>'+
+    '<td class="num r cr">'+(t.credit?inr(t.credit):'')+'</td>'+
+    '<td class="num r">'+(t.balance===null?'':inr(t.balance))+'</td></tr>').join('');
+  html += '</tbody><tfoot><tr><td colspan="5">Totals for the '+rows.length+' rows shown</td><td class="num r dr">'+inr(dr)+'</td><td class="num r cr">'+inr(cr)+'</td><td class="num r">'+inr(cr-dr)+'</td></tr></tfoot>';
+  document.getElementById('txTbl').innerHTML = html;
+
+  document.querySelectorAll('#txTbl th.sortable').forEach(th=> th.onclick = ()=>{
+    const k = th.dataset.k;
+    S.sort.tx = {k:k, dir: S.sort.tx.k===k ? -S.sort.tx.dir : 1};
+    renderTxTable();
+  });
+  // Changing a category teaches the app: every future transaction from the
+  // same counterparty gets the same category, saved in localStorage.
+  document.querySelectorAll('.catsel').forEach(sel=> sel.onchange = ()=>{
+    const t = S.txns.find(x=>x.id===sel.dataset.id);
+    if(!t) return;
+    t.category = sel.value;
+    S.learned[t.counterparty.toUpperCase()] = sel.value;
+    saveLearned();
+    S.txns.forEach(x=>{ if(x.counterparty.toUpperCase()===t.counterparty.toUpperCase()) x.category = sel.value; });
+    toast('"'+t.counterparty+'" will be filed under '+sel.value+' from now on.','ok');
+    renderBank();
+  });
+}
+['txSearch','txCat','txChan','txType','txFrom','txTo','txMin','txMax'].forEach(id=>{
+  const el = document.getElementById(id);
+  el.addEventListener(el.tagName==='SELECT'||el.type==='date'?'change':'input', renderTxTable);
+});
+document.getElementById('txReset').onclick = ()=>{
+  ['txSearch','txFrom','txTo','txMin','txMax'].forEach(id=>document.getElementById(id).value='');
+  ['txCat','txChan','txType'].forEach(id=>document.getElementById(id).value='');
+  renderTxTable();
+};
+
+/* ============================================================================
+   15. CREDIT CARD MODULE
+   ========================================================================== */
+const FEE_RX = /finance charge|interest charge|late payment|overlimit|over limit|annual fee|joining fee|membership fee|renewal fee|processing fee|cash advance fee|gst|igst|cgst|sgst|service tax|surcharge|penal/i;
+const FX_RX  = /\b(USD|EUR|GBP|AED|SGD|AUD|CAD|JPY|CHF|THB|MYR)\b|foreign currency|international|markup|cross ?currency|forex/i;
+const EMI_RX = /\bemi\b|instal?ment|convert(ed)? to emi|smart ?emi|flexipay|dial ?an ?emi/i;
+const REV_RX = /reversal|refund|rev\b|charge ?back|cash ?back|reward redemption|goodwill/i;
+
+function renderCard(){
+  const t = cardTxns();
+  if(!t.length) return;
+  document.getElementById('cardEmpty').style.display='none';
+  document.getElementById('cardBody').style.display='block';
+
+  const meta = S.cardMeta[0] || {};
+  const spends   = t.filter(x=>x.debit>0 && !FEE_RX.test(x.narration) && !EMI_RX.test(x.narration));
+  const emiRows  = t.filter(x=>x.debit>0 && EMI_RX.test(x.narration));
+  const fees     = t.filter(x=>x.debit>0 && FEE_RX.test(x.narration));
+  const payments = t.filter(x=>x.credit>0 && !REV_RX.test(x.narration));
+  const refunds  = t.filter(x=>x.credit>0 && REV_RX.test(x.narration));
+  const fx       = t.filter(x=>FX_RX.test(x.narration));
+  const spendTot = spends.reduce((a,b)=>a+b.debit,0);
+  const feeTot   = fees.reduce((a,b)=>a+b.debit,0);
+  const emiTot   = emiRows.reduce((a,b)=>a+b.debit,0);
+  const payTot   = payments.reduce((a,b)=>a+b.credit,0);
+  const refTot   = refunds.reduce((a,b)=>a+b.credit,0);
+  const fxTot    = fx.reduce((a,b)=>a+b.debit,0);
+
+  const totalDue = meta.totalDue !== null && meta.totalDue !== undefined ? meta.totalDue : (spendTot+feeTot+emiTot-payTot-refTot);
+  const limit = meta.limit || null;
+  const util = limit ? (totalDue/limit*100) : null;
+
+  // -------- hero card with due-date countdown --------
+  let heroTone = 'ok', days = null;
+  if(meta.dueDate){
+    const today = new Date(); today.setHours(0,0,0,0);
+    days = daysBetween(today, meta.dueDate);
+    heroTone = days<0 ? 'bad' : days<=3 ? 'bad' : days<=7 ? 'warn' : 'ok';
+  }
+  document.getElementById('cardHero').innerHTML =
+    '<div class="card" style="border-left:4px solid '+(heroTone==='bad'?'var(--rust)':heroTone==='warn'?'var(--amber)':'var(--green)')+'">'+
+    '<div class="grid g3" style="align-items:center">'+
+      '<div><div class="lbl" style="font-size:11.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Card</div>'+
+        '<h2 style="margin-top:4px">'+esc(meta.issuer||'Credit card')+' •••• '+esc(meta.last4||'••••')+'</h2>'+
+        '<div class="hint" style="margin:4px 0 0">'+esc(meta.holder||'—')+
+        (meta.periodFrom&&meta.periodTo ? ' · '+fmtDate(meta.periodFrom)+' to '+fmtDate(meta.periodTo) : (meta.stmtDate?' · statement '+fmtDate(meta.stmtDate):''))+'</div></div>'+
+      '<div><div class="lbl" style="font-size:11.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Total amount due</div>'+
+        '<div class="duedays" style="font-size:28px">'+inr(totalDue)+'</div>'+
+        '<div class="hint" style="margin:2px 0 0">Minimum due '+(meta.minDue!==null&&meta.minDue!==undefined?inr(meta.minDue):'—')+'</div></div>'+
+      '<div style="text-align:right">'+
+        (days===null ? '<div class="hint">No payment due date found on this statement</div>' :
+          '<div class="lbl" style="font-size:11.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;font-weight:600">'+(days<0?'Overdue by':'Days to due date')+'</div>'+
+          '<div class="duedays '+(heroTone==='ok'?'':'neg')+'" style="color:'+(heroTone==='bad'?'var(--rust)':heroTone==='warn'?'#8A6100':'var(--green)')+'">'+Math.abs(days)+'</div>'+
+          '<div class="hint" style="margin:0">due '+fmtDate(meta.dueDate)+'</div>')+
+      '</div>'+
+    '</div></div>';
+
+  // -------- stat row --------
+  const stat=(l,v,s,cls)=>'<div class="stat"><div class="lbl">'+l+'</div><div class="stat-val '+(cls||'')+'">'+v+'</div><div class="sub">'+(s||'')+'</div></div>';
+  let utilCls = util===null?'':(util>30?'neg':'pos');
+  document.getElementById('cardStats').innerHTML =
+    stat('Purchases', inr(spendTot), spends.length+' transactions', 'neg')+
+    stat('Payments &amp; refunds', inr(payTot+refTot), payments.length+' payments · '+refunds.length+' refunds', 'pos')+
+    stat('Credit utilisation', util===null?'—':util.toFixed(1)+'%', limit?('limit '+inr(limit)):'credit limit not found', utilCls)+
+    stat('Cost of this card', inr(feeTot), fees.length+' fee/interest line'+(fees.length===1?'':'s'), feeTot>0?'neg':'')+
+    stat('Available credit', meta.availLimit!==null&&meta.availLimit!==undefined?inr(meta.availLimit):'—','as printed on the statement')+
+    stat('Available cash limit', meta.cashLimit!==null&&meta.cashLimit!==undefined?inr(meta.cashLimit):'—','cash withdrawal is charged from day one')+
+    stat('EMI instalments charged', inr(emiTot), emiRows.length+' row'+(emiRows.length===1?'':'s'))+
+    stat('Reward points closing', meta.rpClosing!==null&&meta.rpClosing!==undefined?num(meta.rpClosing):'—',
+        (meta.rpEarned!==null&&meta.rpEarned!==undefined?('earned '+num(meta.rpEarned)):'not found on statement'));
+
+  if(util!==null && util>30){
+    document.getElementById('cardStats').insertAdjacentHTML('afterend',
+      '<div class="banner bad" id="utilWarn" style="margin-bottom:16px"><span>!</span><div><b>Credit utilisation is '+util.toFixed(1)+
+      '%.</b> Anything above 30% pulls your credit score down, even when you pay in full. Paying part of the bill before the statement date lowers the reported figure.</div></div>');
+  }
+
+  renderTrap(totalDue, meta.minDue);
+
+  // -------- category donut --------
+  const cat={};
+  spends.forEach(x=>{ cat[x.category]=(cat[x.category]||0)+x.debit; });
+  const cE=Object.entries(cat).sort((a,b)=>b[1]-a[1]);
+  chart('chCardCat',{type:'doughnut',
+    data:{labels:cE.map(e=>e[0]),datasets:[{data:cE.map(e=>e[1]),backgroundColor:PALETTE,borderWidth:2,borderColor:getComputedStyle(document.body).getPropertyValue('--surface')}]},
+    options:{maintainAspectRatio:false,cutout:'58%',plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:11}}},
+      tooltip:{callbacks:{label:c=>c.label+': '+inr(c.parsed)+' ('+pct(c.parsed,spendTot)+')'}}}}});
+
+  // -------- cost of card --------
+  const feeBuckets = {'Finance / interest charges':/finance charge|interest/i,'Late payment fee':/late payment|late fee/i,
+    'Over-limit fee':/over ?limit/i,'Annual / membership fee':/annual fee|membership|joining|renewal/i,
+    'Cash advance fee':/cash advance|cash withdrawal fee/i,'GST on charges':/gst|igst|cgst|sgst|service tax/i,'Other charges':/./};
+  const rowsOut=[]; const used=new Set();
+  for(const label in feeBuckets){
+    const rx=feeBuckets[label];
+    const hit=fees.filter(f=>!used.has(f.id) && rx.test(f.narration));
+    hit.forEach(f=>used.add(f.id));
+    if(hit.length) rowsOut.push([label, hit.length, hit.reduce((a,b)=>a+b.debit,0)]);
+  }
+  const fxEst = fx.filter(x=>x.debit>0).reduce((a,b)=>a+b.debit,0)*0.035;
+  document.getElementById('cardCost').innerHTML =
+    (feeTot>0 ? '<div class="banner bad"><span>₹</span><div>This card cost you <b>'+inr(feeTot)+'</b> in charges this period — money that bought you nothing.</div></div>'
+              : '<div class="banner ok"><span>✓</span><div>No finance charges, late fees or annual fees on this statement. Well played.</div></div>')+
+    (rowsOut.length ? '<div class="tblwrap" style="max-height:260px"><table><thead><tr><th>Charge</th><th class="r">Count</th><th class="r">Amount</th></tr></thead><tbody>'+
+      rowsOut.map(r=>'<tr><td>'+esc(r[0])+'</td><td class="num r">'+r[1]+'</td><td class="num r dr">'+inr(r[2])+'</td></tr>').join('')+
+      '</tbody><tfoot><tr><td>Cost of this card</td><td class="num r">'+fees.length+'</td><td class="num r">'+inr(feeTot)+'</td></tr></tfoot></table></div>' : '')+
+    (fx.length ? '<div class="banner warn" style="margin-top:10px"><span>✈</span><div><b>'+fx.length+' foreign currency transaction'+(fx.length>1?'s':'')+'</b> totalling '+inr(fxTot)+
+      '. At a typical 3.5% markup plus GST that is roughly <b>'+inr(fxEst)+'</b> in fees. Check your card\'s actual markup rate.</div></div>' : '');
+
+  // -------- merchants --------
+  const mer={};
+  spends.forEach(x=>{ (mer[x.counterparty]=mer[x.counterparty]||{t:0,n:0}); mer[x.counterparty].t+=x.debit; mer[x.counterparty].n++; });
+  const mE=Object.entries(mer).sort((a,b)=>b[1].t-a[1].t).slice(0,12);
+  const rewardRate = (meta.rpEarned && spendTot) ? (meta.rpEarned/(spendTot/100)) : null;
+  document.getElementById('cardMerch').innerHTML =
+    '<div class="tblwrap" style="max-height:330px"><table><thead><tr><th>Merchant</th><th>Category</th><th class="r">Spend</th><th class="r">Share</th></tr></thead><tbody>'+
+    mE.map(e=>{
+      const c = spends.find(x=>x.counterparty===e[0]);
+      return '<tr><td>'+esc(e[0])+'</td><td><span class="tag">'+esc(c?c.category:'—')+'</span></td><td class="num r dr">'+inr(e[1].t)+'</td><td class="num r">'+pct(e[1].t,spendTot)+'</td></tr>';
+    }).join('')+'</tbody></table></div>'+
+    (rewardRate!==null ? '<div class="banner ok" style="margin-top:10px"><span>★</span><div>Reward rate this period: <b>'+rewardRate.toFixed(2)+' points per ₹100</b> spent. '+
+      (rewardRate<1?'That is low — check whether a different card suits your spending pattern.':'')+'</div></div>'
+      : '<p class="hint" style="margin-top:10px">Reward points were not found on this statement, so the earn rate could not be computed.</p>');
+
+  // -------- flags --------
+  let flags='';
+  if(emiRows.length) flags += '<div class="banner warn"><span>#</span><div><b>'+emiRows.length+' EMI instalment row'+(emiRows.length>1?'s':'')+'</b> totalling '+inr(emiTot)+' is being charged to this card. These continue whether or not you spend anything new.</div></div>';
+  if(refunds.length) flags += '<div class="banner ok"><span>↩</span><div><b>'+refunds.length+' refund or reversal</b> worth '+inr(refTot)+'. Verify each one is a refund you expected.</div></div>';
+  if(fx.length) flags += '<div class="banner warn"><span>✈</span><div>Foreign currency transactions found: '+fx.slice(0,5).map(x=>esc(x.counterparty)).join(', ')+(fx.length>5?' and '+(fx.length-5)+' more':'')+'.</div></div>';
+  if(!flags) flags = '<p class="hint">Nothing unusual — no EMI instalments, foreign currency transactions or reversals detected.</p>';
+  document.getElementById('cardFlags').innerHTML = flags;
+
+  // -------- statement comparison --------
+  const byStmt = {};
+  t.forEach(x=>{ const k = x.source; (byStmt[k]=byStmt[k]||{spend:0,fees:0,pay:0,n:0,from:x.date,to:x.date});
+    const b=byStmt[k];
+    if(x.debit>0){ if(FEE_RX.test(x.narration)) b.fees+=x.debit; else b.spend+=x.debit; }
+    if(x.credit>0) b.pay+=x.credit;
+    b.n++; if(x.date<b.from)b.from=x.date; if(x.date>b.to)b.to=x.date;
+  });
+  const keys=Object.keys(byStmt);
+  document.getElementById('cardCompare').innerHTML = keys.length<2
+    ? '<p class="hint">Load more than one statement to compare months side by side.</p>'
+    : '<div class="tblwrap"><table><thead><tr><th>Statement</th><th>Period</th><th class="r">Purchases</th><th class="r">Charges</th><th class="r">Payments</th><th class="r">Txns</th></tr></thead><tbody>'+
+      keys.map(k=>{const b=byStmt[k];return '<tr><td>'+esc(k)+'</td><td class="num">'+fmtDate(b.from)+' – '+fmtDate(b.to)+'</td><td class="num r dr">'+inr(b.spend)+'</td><td class="num r dr">'+inr(b.fees)+'</td><td class="num r cr">'+inr(b.pay)+'</td><td class="num r">'+b.n+'</td></tr>';}).join('')+
+      '</tbody></table></div>';
+
+  // -------- transaction table --------
+  document.getElementById('cardTbl').innerHTML =
+    '<thead><tr><th>Date</th><th>Narration</th><th>Merchant</th><th>Category</th><th>Type</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>'+
+    t.map(x=>{
+      const type = x.credit>0 ? (REV_RX.test(x.narration)?'Refund':'Payment')
+                 : FEE_RX.test(x.narration)?'Charge' : EMI_RX.test(x.narration)?'EMI' : FX_RX.test(x.narration)?'Foreign' : 'Purchase';
+      return '<tr><td class="num">'+fmtDate(x.date)+'</td><td style="max-width:320px">'+esc(x.narration.slice(0,110))+'</td><td>'+esc(x.counterparty)+'</td>'+
+        '<td><span class="tag">'+esc(x.category)+'</span></td><td><span class="tag '+(type==='Charge'?'bad':type==='Payment'||type==='Refund'?'ok':'')+'">'+type+'</span></td>'+
+        '<td class="num r dr">'+(x.debit?inr(x.debit):'')+'</td><td class="num r cr">'+(x.credit?inr(x.credit):'')+'</td></tr>';
+    }).join('')+
+    '</tbody><tfoot><tr><td colspan="5">Totals</td><td class="num r dr">'+inr(t.reduce((a,b)=>a+b.debit,0))+'</td><td class="num r cr">'+inr(t.reduce((a,b)=>a+b.credit,0))+'</td></tr></tfoot>';
+}
+
+/* Minimum-due trap.
+   Simulate month by month: interest is charged on the running balance, the
+   minimum due is a percentage of it with a floor, and the balance only falls
+   by whatever is left of the payment after interest. */
+function renderTrap(balance, statedMin){
+  const rate = parseFloat(document.getElementById('apr').value)/100;
+  const minPct = parseFloat(document.getElementById('minPct').value)/100;
+  const floor = parseFloat(document.getElementById('minFloor').value);
+  const out = document.getElementById('trapOut');
+  if(!balance || balance<=0){ out.innerHTML='<p class="hint">No outstanding balance on this statement, so there is nothing to model.</p>'; return; }
+
+  let bal = balance, months = 0, interest = 0, first = null;
+  while(bal > 1 && months < 600){
+    const int = bal * rate;
+    let pay = Math.max(bal*minPct, floor);
+    if(pay > bal + int) pay = bal + int;
+    if(months===0) first = pay;
+    if(pay <= int){ months = 601; break; }     // minimum never covers interest -> never clears
+    interest += int;
+    bal = bal + int - pay;
+    months++;
+  }
+  const never = months>=601;
+  const years = Math.floor(months/12), rem = months%12;
+  const apyPct = (rate*12*100).toFixed(1);
+
+  out.innerHTML = '<div class="grid g2">'+
+    '<div style="border:1px solid var(--line);border-left:4px solid var(--rust);border-radius:10px;padding:16px">'+
+      '<h4 style="color:var(--rust)">If you pay only the minimum</h4>'+
+      '<div class="stat-val neg" style="font-size:26px">'+(never?'Never clears':(years?years+' yr ':'')+rem+' mo')+'</div>'+
+      '<div class="hint" style="margin:6px 0 12px">First minimum payment '+inr(statedMin||first)+'</div>'+
+      '<table style="font-size:12.5px"><tbody>'+
+        '<tr><td>Balance today</td><td class="num r">'+inr(balance)+'</td></tr>'+
+        '<tr><td>Interest you will pay</td><td class="num r dr"><b>'+(never?'unbounded':inr(interest))+'</b></td></tr>'+
+        '<tr><td>Total you will hand over</td><td class="num r dr"><b>'+(never?'—':inr(balance+interest))+'</b></td></tr>'+
+      '</tbody></table></div>'+
+    '<div style="border:1px solid var(--line);border-left:4px solid var(--green);border-radius:10px;padding:16px">'+
+      '<h4 style="color:var(--green)">If you pay in full</h4>'+
+      '<div class="stat-val pos" style="font-size:26px">This month</div>'+
+      '<div class="hint" style="margin:6px 0 12px">One payment of '+inr(balance)+'</div>'+
+      '<table style="font-size:12.5px"><tbody>'+
+        '<tr><td>Balance today</td><td class="num r">'+inr(balance)+'</td></tr>'+
+        '<tr><td>Interest you will pay</td><td class="num r cr"><b>₹0.00</b></td></tr>'+
+        '<tr><td>Total you will hand over</td><td class="num r cr"><b>'+inr(balance)+'</b></td></tr>'+
+      '</tbody></table></div>'+
+    '</div>'+
+    '<div class="banner bad" style="margin-top:14px"><span>→</span><div>Paying the minimum costs you <b>'+(never?'more than the balance itself':inr(interest))+'</b> extra at '+
+      document.getElementById('apr').value+'% a month ('+apyPct+'% a year). '+
+      (never?'At this rate the minimum payment does not even cover the interest, so the balance grows.':'That is '+pct(interest,balance)+' on top of what you actually bought.')+'</div></div>';
+}
+document.getElementById('btnRecalcTrap').onclick = ()=>{
+  const meta = S.cardMeta[0]||{};
+  const t = cardTxns();
+  const due = meta.totalDue!==null&&meta.totalDue!==undefined ? meta.totalDue : t.reduce((a,b)=>a+b.debit-b.credit,0);
+  renderTrap(due, meta.minDue);
+};
+
+/* ============================================================================
+   16. RECONCILIATION ENGINE
+   ========================================================================== */
+
+/* 16.1 CARD-TO-BANK
+   A card bill payment shows up twice: as a debit in the bank statement and as
+   a credit on the card. Matching on amount within a date window pairs them
+   up, and the "true spend" figure below counts the card's own transactions
+   once while ignoring the settlement, so nothing is double counted. */
+function reconCardToBank(){
+  const winDays = +document.getElementById('c2bDays').value || 5;
+  const tol = +document.getElementById('c2bTol').value || 1;
+  const bank = bankTxns();
+  const card = cardTxns();
+  const out = document.getElementById('c2bOut');
+  if(!bank.length || !card.length){
+    out.innerHTML = '<div class="banner warn"><span>i</span><div>This needs at least one bank statement and one credit card statement loaded. You currently have '+bank.length+' bank rows and '+card.length+' card rows.</div></div>';
+    return;
+  }
+  // Candidate settlements: bank debits that look like a card payment.
+  const bankPays = bank.filter(t=>t.debit>0 && (t.category==='Credit Card Payment' || /credit ?card|cc ?pay|card ?pmt|cardbill|card bill/i.test(t.narration)));
+  // Card side: credits that are payments, not refunds.
+  const cardPays = card.filter(t=>t.credit>0 && !REV_RX.test(t.narration));
+
+  const matched=[], usedCard=new Set();
+  bankPays.forEach(b=>{
+    let hit=null, bestGap=1e9;
+    cardPays.forEach(c=>{
+      if(usedCard.has(c.id)) return;
+      if(Math.abs(c.credit - b.debit) > tol) return;
+      const gap = Math.abs(daysBetween(b.date, c.date));
+      if(gap<=winDays && gap<bestGap){ hit=c; bestGap=gap; }
+    });
+    if(hit){ usedCard.add(hit.id); matched.push({bank:b, card:hit, gap:bestGap}); }
+  });
+  const bankOnly = bankPays.filter(b=>!matched.some(m=>m.bank.id===b.id));
+  const cardOnly = cardPays.filter(c=>!usedCard.has(c.id));
+
+  const settlement = matched.reduce((a,m)=>a+m.bank.debit,0) + bankOnly.reduce((a,b)=>a+b.debit,0);
+  const bankSpend = bank.filter(t=>t.debit>0 && t.category!=='Transfer to Self' && t.category!=='Credit Card Payment').reduce((a,b)=>a+b.debit,0);
+  const cardSpend = card.filter(t=>t.debit>0).reduce((a,b)=>a+b.debit,0);
+  S.recon.c2b = {matched, bankOnly, cardOnly, settlement, bankSpend, cardSpend, trueSpend:bankSpend+cardSpend};
+
+  out.innerHTML =
+    '<div class="grid g3" style="margin-bottom:14px">'+
+      '<div class="stat accent"><div class="lbl">True total spend</div><div class="stat-val">'+inr(bankSpend+cardSpend)+'</div><div class="sub">bank spend + card spend, settlement removed</div></div>'+
+      '<div class="stat"><div class="lbl">Bank spend (excl. card bills)</div><div class="stat-val">'+inr(bankSpend)+'</div><div class="sub">self-transfers also excluded</div></div>'+
+      '<div class="stat"><div class="lbl">Card bill settlements ignored</div><div class="stat-val neg">'+inr(settlement)+'</div><div class="sub">moving money, not spending it</div></div>'+
+    '</div>'+
+    '<div class="banner '+(bankOnly.length||cardOnly.length?'warn':'ok')+'"><span>'+(bankOnly.length||cardOnly.length?'!':'✓')+'</span><div>'+
+      matched.length+' payment'+(matched.length===1?'':'s')+' matched within ±'+winDays+' days. '+
+      (bankOnly.length?bankOnly.length+' bank debit'+(bankOnly.length===1?'':'s')+' had no counterpart on the card. ':'')+
+      (cardOnly.length?cardOnly.length+' card credit'+(cardOnly.length===1?'':'s')+' had no matching bank debit — the payment may have come from another account.':'')+
+      (!bankOnly.length&&!cardOnly.length?'Every card bill payment ties out.':'')+
+    '</div></div>'+
+    reconTable('Matched pairs', matched.map(m=>[fmtDate(m.bank.date), m.bank.narration.slice(0,60), inr(m.bank.debit), fmtDate(m.card.date), m.card.narration.slice(0,60), m.gap+' d']),
+      ['Bank date','Bank narration','Amount','Card date','Card narration','Gap'], 'ok')+
+    reconTable('In bank, not on the card', bankOnly.map(b=>[fmtDate(b.date), b.narration.slice(0,80), inr(b.debit)]), ['Date','Narration','Amount'], 'bad')+
+    reconTable('On the card, not in the bank', cardOnly.map(c=>[fmtDate(c.date), c.narration.slice(0,80), inr(c.credit)]), ['Date','Narration','Amount'], 'bad');
+}
+function reconTable(title, rows, heads, tone){
+  if(!rows.length) return '<h4 style="margin:16px 0 6px">'+title+' <span class="tag ok">none</span></h4>';
+  return '<h4 style="margin:16px 0 6px">'+title+' <span class="tag '+(tone||'')+'">'+rows.length+'</span></h4>'+
+    '<div class="tblwrap" style="max-height:300px"><table><thead><tr>'+heads.map((h,i)=>'<th'+(i>1?' class="r"':'')+'>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+
+    rows.slice(0,300).map(r=>'<tr>'+r.map((c,i)=>'<td class="'+(i>1?'num r':(i===0?'num':''))+'">'+esc(c)+'</td>').join('')+'</tr>').join('')+
+    '</tbody></table></div>';
+}
+document.getElementById('btnC2B').onclick = reconCardToBank;
+
+/* 16.2 BOOK-TO-BANK — three-pass matcher
+   Pass 1  reference / UTR equality — the strongest signal there is.
+   Pass 2  exact amount plus a date within a tight window.
+   Pass 3  fuzzy: amount within the user's tolerance, wider date window.
+   Each pass only looks at rows the earlier passes left unmatched, so a strong
+   match is never stolen by a weaker one. Everything left over is reported. */
+document.getElementById('btnBookPick').onclick = ()=>document.getElementById('bookInput').click();
+document.getElementById('bookInput').onchange = async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  document.getElementById('bookName').textContent = f.name;
+  const grid = await readSheet(f);
+  setupBooks(grid, f.name);
+  e.target.value='';
+};
+document.getElementById('btnBookSample').onclick = ()=>{
+  const rows = sampleBooks();
+  setupBooks(rows, 'sample-cashbook.csv');
+  document.getElementById('bookName').textContent = 'sample-cashbook.csv';
+};
+function setupBooks(grid, name){
+  const hIdx = findHeaderRow(grid);
+  const roles = rolesFromHeader(grid[hIdx]||[]);
+  S.books = {name, grid, headerIdx:hIdx, roles, kind:'bank', id:'books'};
+  const roleOpts=['ignore','date','narration','ref','debit','credit','amount','balance'];
+  document.getElementById('bookMap').innerHTML =
+    '<p class="hint">Map your own columns. StatementIQ guessed from the header row.</p>'+
+    '<div class="tblwrap" style="max-height:none"><table><thead><tr><th>Column</th><th>First value</th><th>Role</th></tr></thead><tbody>'+
+    (grid[hIdx]||[]).map((h,i)=>'<tr><td><b>'+esc(h)+'</b></td><td class="num">'+esc((grid[hIdx+1]||[])[i]||'')+'</td>'+
+      '<td><select class="bkmap" data-col="'+i+'">'+roleOpts.map(r=>'<option value="'+r+'"'+(roles[i]===r?' selected':'')+'>'+ROLE_LABELS[r]+'</option>').join('')+'</select></td></tr>').join('')+
+    '</tbody></table></div>';
+  document.querySelectorAll('.bkmap').forEach(s=> s.onchange = ()=>{ S.books.roles[+s.dataset.col]=s.value; });
+  document.getElementById('bookRunRow').style.display='flex';
+  toast('Books loaded. Check the mapping, then run the reconciliation.','ok');
+}
+function reconBookToBank(){
+  const out = document.getElementById('b2bOut');
+  if(!S.books){ out.innerHTML='<div class="banner warn"><span>i</span><div>Choose a books file first.</div></div>'; return; }
+  const bank = bankTxns();
+  if(!bank.length){ out.innerHTML='<div class="banner warn"><span>i</span><div>Load a bank statement before reconciling against it.</div></div>'; return; }
+  const bookRows = buildRows(S.books).map(r=>{ r.matched=false; return r; });
+  const bankRows = bank.map(r=>Object.assign({}, r, {matched:false, _ref:r}));
+
+  const d1 = +document.getElementById('b2bD1').value || 3;
+  const d2 = +document.getElementById('b2bD2').value || 10;
+  const tol = +document.getElementById('b2bTol').value || 0;
+  const amtOf = r => (r.debit||0) - (r.credit||0);
+  const matched = [], mismatch = [];
+
+  const passes = [
+    // Pass 1: reference or UTR equality (case-insensitive, non-empty)
+    (bk, bn) => bk.ref && bn.ref && bk.ref.replace(/\s/g,'').toLowerCase() === bn.ref.replace(/\s/g,'').toLowerCase(),
+    // Pass 2: same amount to the paisa, date within the tight window
+    (bk, bn) => Math.abs(amtOf(bk)-amtOf(bn)) < 0.01 && Math.abs(daysBetween(bk.date, bn.date)) <= d1,
+    // Pass 3: amount within tolerance, wider date window
+    (bk, bn) => Math.abs(amtOf(bk)-amtOf(bn)) <= tol && Math.abs(daysBetween(bk.date, bn.date)) <= d2
+  ];
+  passes.forEach((test, pi)=>{
+    bookRows.forEach(bk=>{
+      if(bk.matched) return;
+      let hit=null, bestGap=1e9;
+      bankRows.forEach(bn=>{
+        if(bn.matched) return;
+        if(!test(bk,bn)) return;
+        const gap = Math.abs(daysBetween(bk.date, bn.date));
+        if(gap<bestGap){ hit=bn; bestGap=gap; }
+      });
+      if(hit){
+        bk.matched=true; hit.matched=true;
+        const diff = +(amtOf(bk)-amtOf(hit)).toFixed(2);
+        const m = {book:bk, bank:hit, pass:pi+1, gap:bestGap, diff:diff};
+        if(Math.abs(diff)>0.01) mismatch.push(m); else matched.push(m);
+      }
+    });
+  });
+  const bankOnly = bankRows.filter(r=>!r.matched);
+  const bookOnly = bookRows.filter(r=>!r.matched);
+  S.recon.b2b = {matched, mismatch, bankOnly, bookOnly, bookRows, bankRows};
+
+  // Reconciliation statement. Movements are signed money-in minus money-out, so
+  // the four adjustments below provably bridge one balance to the other.
+  const netOf = r => (r.credit||0) - (r.debit||0);
+  const bookBal = bookRows.reduce((a,r)=>a+netOf(r), 0);
+  const bankBal = bankRows.reduce((a,r)=>a+netOf(r), 0);
+  const bookOnlyNet = bookOnly.reduce((a,r)=>a+netOf(r), 0);
+  const bankOnlyNet = bankOnly.reduce((a,r)=>a+netOf(r), 0);
+  const diffNet = mismatch.reduce((a,m)=>a + (netOf(m.bank) - netOf(m.book)), 0);
+
+  out.innerHTML =
+    '<div class="grid g4" style="margin:14px 0">'+
+      '<div class="stat"><div class="lbl">Matched</div><div class="stat-val pos">'+matched.length+'</div><div class="sub">'+
+        [1,2,3].map(p=>'pass '+p+': '+matched.concat(mismatch).filter(m=>m.pass===p).length).join(' · ')+'</div></div>'+
+      '<div class="stat"><div class="lbl">In bank, not in books</div><div class="stat-val neg">'+bankOnly.length+'</div><div class="sub">'+inr(bankOnly.reduce((a,r)=>a+r.debit+r.credit,0))+'</div></div>'+
+      '<div class="stat"><div class="lbl">In books, not in bank</div><div class="stat-val neg">'+bookOnly.length+'</div><div class="sub">'+inr(bookOnly.reduce((a,r)=>a+r.debit+r.credit,0))+'</div></div>'+
+      '<div class="stat"><div class="lbl">Amount mismatches</div><div class="stat-val '+(mismatch.length?'neg':'pos')+'">'+mismatch.length+'</div><div class="sub">matched but figures differ</div></div>'+
+    '</div>'+
+    '<h4 style="margin:16px 0 6px">Reconciliation statement</h4>'+
+    '<div class="tblwrap" style="max-height:none"><table><tbody>'+
+      '<tr><td>Net movement as per books</td><td class="num r">'+inr(bookBal)+'</td></tr>'+
+      '<tr><td>Less: recorded in the books but not in the bank ('+bookOnly.length+')</td><td class="num r">'+inr(-bookOnlyNet)+'</td></tr>'+
+      '<tr><td>Add: in the bank but not in the books ('+bankOnly.length+')</td><td class="num r">'+inr(bankOnlyNet)+'</td></tr>'+
+      '<tr><td>Amount differences on matched items ('+mismatch.length+')</td><td class="num r">'+inr(diffNet)+'</td></tr>'+
+      '</tbody><tfoot><tr><td>Net movement as per bank</td><td class="num r">'+inr(bankBal)+'</td></tr></tfoot></table></div>'+
+    reconTable('Matched items', matched.slice(0,200).map(m=>[fmtDate(m.book.date), m.book.narration.slice(0,50), inr(amtOf(m.book)), fmtDate(m.bank.date), m.bank.narration.slice(0,50), 'pass '+m.pass]),
+      ['Book date','Book narration','Amount','Bank date','Bank narration','Matched by'], 'ok')+
+    reconTable('Amount mismatches', mismatch.map(m=>[fmtDate(m.book.date), m.book.narration.slice(0,50), inr(amtOf(m.book)), inr(amtOf(m.bank)), inr(m.diff)]),
+      ['Date','Narration','Books say','Bank says','Difference'], 'bad')+
+    reconTable('In bank, not in books', bankOnly.map(r=>[fmtDate(r.date), r.narration.slice(0,80), inr(amtOf(r))]), ['Date','Narration','Amount'], 'bad')+
+    reconTable('In books, not in bank', bookOnly.map(r=>[fmtDate(r.date), r.narration.slice(0,80), inr(amtOf(r))]), ['Date','Narration','Amount'], 'bad')+
+    manualMatchUI(bankOnly, bookOnly);
+}
+document.getElementById('btnB2B').onclick = reconBookToBank;
+
+// Manual matching: pick one row from each side and mark them reconciled.
+function manualMatchUI(bankOnly, bookOnly){
+  if(!bankOnly.length || !bookOnly.length) return '';
+  return '<h4 style="margin:18px 0 6px">Match a pair by hand</h4>'+
+    '<p class="hint">For the items you know belong together — a cheque banked late, a payment recorded under a different name.</p>'+
+    '<div class="row"><select id="mmBank" style="min-width:280px">'+
+      bankOnly.map((r,i)=>'<option value="'+i+'">'+esc(fmtDate(r.date)+' · '+inr(r.debit||r.credit)+' · '+r.narration.slice(0,40))+'</option>').join('')+'</select>'+
+    '<select id="mmBook" style="min-width:280px">'+
+      bookOnly.map((r,i)=>'<option value="'+i+'">'+esc(fmtDate(r.date)+' · '+inr(r.debit||r.credit)+' · '+r.narration.slice(0,40))+'</option>').join('')+'</select>'+
+    '<button class="btn sm primary" onclick="manualMatch()">Mark reconciled</button></div>';
+}
+function manualMatch(){
+  const r = S.recon.b2b; if(!r) return;
+  const bi = +document.getElementById('mmBank').value, ki = +document.getElementById('mmBook').value;
+  const bn = r.bankOnly[bi], bk = r.bookOnly[ki];
+  if(!bn||!bk) return;
+  bn.matched = true; bk.matched = true;
+  r.matched.push({book:bk, bank:bn, pass:'manual', gap:Math.abs(daysBetween(bk.date,bn.date)), diff:0});
+  r.bankOnly = r.bankRows.filter(x=>!x.matched);
+  r.bookOnly = r.bookRows.filter(x=>!x.matched);
+  toast('Marked as reconciled.','ok');
+  reconBookToBank();
+}
+
+/* 16.3 MULTI-ACCOUNT CONSOLIDATION
+   One timeline with a source column. An inter-account transfer is a debit in
+   one statement and a credit of the same amount in another within a few days;
+   both legs are tagged so the consolidated total does not count the same
+   rupee twice. */
+function renderConsolidation(){
+  const out = document.getElementById('consOut');
+  const t = S.txns;
+  if(!t.length){ out.innerHTML='<p class="hint">Load statements first.</p>'; return; }
+  const sources = [...new Set(t.map(x=>x.source))];
+  const transfers = [];
+  const tagged = new Set();
+  if(sources.length>1){
+    t.filter(x=>x.debit>0).forEach(d=>{
+      if(tagged.has(d.id)) return;
+      const hit = t.find(c=> c.credit>0 && !tagged.has(c.id) && c.source!==d.source &&
+        Math.abs(c.credit-d.debit)<1 && Math.abs(daysBetween(d.date,c.date))<=3);
+      if(hit){ tagged.add(d.id); tagged.add(hit.id); transfers.push({out:d, in:hit}); }
+    });
+  }
+  const inflow = t.filter(x=>!tagged.has(x.id)).reduce((a,b)=>a+b.credit,0);
+  const outflow = t.filter(x=>!tagged.has(x.id)).reduce((a,b)=>a+b.debit,0);
+  const bySrc = {};
+  t.forEach(x=>{ (bySrc[x.source]=bySrc[x.source]||{in:0,out:0,n:0,kind:x.kind}); bySrc[x.source].in+=x.credit; bySrc[x.source].out+=x.debit; bySrc[x.source].n++; });
+
+  out.innerHTML =
+    '<div class="grid g4" style="margin-bottom:14px">'+
+      '<div class="stat accent"><div class="lbl">Statements</div><div class="stat-val">'+sources.length+'</div><div class="sub">'+t.length+' transactions</div></div>'+
+      '<div class="stat"><div class="lbl">Consolidated inflow</div><div class="stat-val pos">'+inr(inflow)+'</div><div class="sub">transfers between your own accounts removed</div></div>'+
+      '<div class="stat"><div class="lbl">Consolidated outflow</div><div class="stat-val neg">'+inr(outflow)+'</div><div class="sub">same basis</div></div>'+
+      '<div class="stat"><div class="lbl">Inter-account transfers</div><div class="stat-val">'+transfers.length+'</div><div class="sub">'+inr(transfers.reduce((a,x)=>a+x.out.debit,0))+' netted off</div></div>'+
+    '</div>'+
+    '<h4 style="margin:14px 0 6px">By source</h4>'+
+    '<div class="tblwrap" style="max-height:240px"><table><thead><tr><th>Statement</th><th>Type</th><th class="r">Credits</th><th class="r">Debits</th><th class="r">Rows</th></tr></thead><tbody>'+
+      Object.entries(bySrc).map(e=>'<tr><td>'+esc(e[0])+'</td><td><span class="tag">'+(e[1].kind==='card'?'Credit card':'Bank')+'</span></td>'+
+        '<td class="num r cr">'+inr(e[1].in)+'</td><td class="num r dr">'+inr(e[1].out)+'</td><td class="num r">'+e[1].n+'</td></tr>').join('')+
+      '</tbody></table></div>'+
+    (transfers.length ? reconTable('Transfers between your own accounts (counted once)',
+      transfers.map(x=>[fmtDate(x.out.date), x.out.source+' → '+x.in.source, inr(x.out.debit)]), ['Date','Movement','Amount'], 'ok') : '')+
+    '<h4 style="margin:18px 0 6px">Unified timeline</h4>'+
+    '<div class="tblwrap"><table><thead><tr><th>Date</th><th>Source</th><th>Narration</th><th>Category</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>'+
+      t.slice(0,600).map(x=>'<tr'+(tagged.has(x.id)?' style="opacity:.5"':'')+'><td class="num">'+fmtDate(x.date)+'</td><td style="font-size:11px">'+esc(x.source)+'</td>'+
+        '<td style="max-width:300px">'+esc(x.narration.slice(0,90))+(tagged.has(x.id)?' <span class="tag">self transfer</span>':'')+'</td>'+
+        '<td><span class="tag">'+esc(x.category)+'</span></td>'+
+        '<td class="num r dr">'+(x.debit?inr(x.debit):'')+'</td><td class="num r cr">'+(x.credit?inr(x.credit):'')+'</td></tr>').join('')+
+    '</tbody></table></div>';
+}
+
+/* 16.4 PERIOD-OVER-PERIOD */
+function fillPeriodSelects(){
+  const months = [...new Set(S.txns.map(t=>monthKey(t.date)).filter(Boolean))].sort();
+  const quarters = [...new Set(S.txns.map(t=>{
+    const d=t.date; return d.getFullYear()+'-Q'+(Math.floor(d.getMonth()/3)+1);
+  }))].sort();
+  const opts = months.map(m=>'<option value="M:'+m+'">'+monthLabel(m)+'</option>').join('') +
+               quarters.map(q=>'<option value="Q:'+q+'">'+q+'</option>').join('');
+  const a=document.getElementById('perA'), b=document.getElementById('perB');
+  a.innerHTML=opts; b.innerHTML=opts;
+  if(months.length>=2){ a.value='M:'+months[months.length-1]; b.value='M:'+months[months.length-2]; }
+}
+function periodLabel(sel){
+  if(!sel) return '';
+  const [kind,val] = sel.split(':');
+  return kind==='M' ? monthLabel(val) : val;
+}
+function inPeriod(t, sel){
+  if(!sel) return false;
+  const [kind,val]=sel.split(':');
+  if(kind==='M') return monthKey(t.date)===val;
+  const q = t.date.getFullYear()+'-Q'+(Math.floor(t.date.getMonth()/3)+1);
+  return q===val;
+}
+document.getElementById('btnPeriod').onclick = ()=>{
+  const A=document.getElementById('perA').value, B=document.getElementById('perB').value;
+  const out=document.getElementById('perOut');
+  if(!A||!B){ out.innerHTML='<p class="hint">Load statements covering at least two periods.</p>'; return; }
+  const a=S.txns.filter(t=>inPeriod(t,A)), b=S.txns.filter(t=>inPeriod(t,B));
+  const cats=[...new Set(a.concat(b).filter(t=>t.debit>0).map(t=>t.category))];
+  const rows=cats.map(c=>{
+    const av=a.filter(t=>t.category===c).reduce((s,t)=>s+t.debit,0);
+    const bv=b.filter(t=>t.category===c).reduce((s,t)=>s+t.debit,0);
+    return {c, av, bv, d:av-bv, p: bv? ((av-bv)/bv*100) : (av?100:0)};
+  }).sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+  const totA=a.reduce((s,t)=>s+t.debit,0), totB=b.reduce((s,t)=>s+t.debit,0);
+  const up=rows.filter(r=>r.d>0).slice(0,3), down=rows.filter(r=>r.d<0).slice(0,3);
+  out.innerHTML =
+    '<div class="grid g3" style="margin-bottom:14px">'+
+      '<div class="stat"><div class="lbl">Base period spend</div><div class="stat-val">'+inr(totA)+'</div><div class="sub">'+esc(periodLabel(A))+'</div></div>'+
+      '<div class="stat"><div class="lbl">Compared period spend</div><div class="stat-val">'+inr(totB)+'</div><div class="sub">'+esc(periodLabel(B))+'</div></div>'+
+      '<div class="stat accent"><div class="lbl">Change</div><div class="stat-val '+(totA>totB?'neg':'pos')+'">'+(totA>totB?'+':'')+inr(totA-totB)+'</div><div class="sub">'+(totB?((totA-totB)/totB*100).toFixed(1):'0')+'%</div></div>'+
+    '</div>'+
+    (up.length||down.length ? '<div class="banner warn"><span>▲▼</span><div>'+
+      (up.length?'<b>Up the most:</b> '+up.map(r=>esc(r.c)+' '+inr(r.d)).join(', ')+'. ':'')+
+      (down.length?'<b>Down the most:</b> '+down.map(r=>esc(r.c)+' '+inr(Math.abs(r.d))).join(', ')+'.':'')+'</div></div>' : '')+
+    '<div class="tblwrap"><table><thead><tr><th>Category</th><th class="r">Base</th><th class="r">Compared</th><th class="r">Change</th><th class="r">%</th></tr></thead><tbody>'+
+      rows.map(r=>'<tr><td>'+esc(r.c)+'</td><td class="num r">'+inr(r.av)+'</td><td class="num r">'+inr(r.bv)+'</td>'+
+        '<td class="num r '+(r.d>0?'dr':'cr')+'">'+(r.d>0?'+':'')+inr(r.d)+'</td><td class="num r '+(r.d>0?'dr':'cr')+'">'+(r.p>0?'+':'')+r.p.toFixed(1)+'%</td></tr>').join('')+
+      '</tbody><tfoot><tr><td>Total</td><td class="num r">'+inr(totA)+'</td><td class="num r">'+inr(totB)+'</td><td class="num r">'+inr(totA-totB)+'</td><td class="num r">'+(totB?((totA-totB)/totB*100).toFixed(1):'0')+'%</td></tr></tfoot></table></div>';
+};
+
+/* ============================================================================
+   17. EXCEL EXPORT (ExcelJS — real styling, number formats, filters, formulas)
+   ExcelJS cannot create native Excel charts from the browser, so the summary
+   sheets are laid out as clean contiguous blocks: select the range and press
+   Alt+F1 to get a chart in two clicks.
+   ========================================================================== */
+const INR_FMT = '#,##,##0.00';
+const CHARCOAL = 'FF0E0E10', AMBER = 'FFF5B301', RUST = 'FFE2582B', GREEN = 'FF177245', CREAM = 'FFF4EDE2';
+
+function styleHeader(ws, cols){
+  ws.getRow(1).eachCell(c=>{
+    c.font = {bold:true, color:{argb:'FFFFFFFF'}, size:11, name:'Calibri'};
+    c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:CHARCOAL}};
+    c.alignment = {vertical:'middle', horizontal:'left'};
+    c.border = {bottom:{style:'thin', color:{argb:AMBER}}};
+  });
+  ws.getRow(1).height = 22;
+  ws.views = [{state:'frozen', ySplit:1}];
+  if(cols>0) ws.autoFilter = {from:{row:1,column:1}, to:{row:1,column:cols}};
+}
+function widths(ws, arr){ arr.forEach((w,i)=>{ ws.getColumn(i+1).width = w; }); }
+
+async function exportExcel(){
+  if(!S.txns.length){ toast('Nothing to export yet — load a statement first.','err'); return; }
+  toast('Building your workbook…');
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'StatementIQ'; wb.created = new Date();
+
+  const bank = bankTxns(), card = cardTxns();
+  const months = new Set(S.txns.map(t=>monthKey(t.date)));
+  const inflow = S.txns.reduce((a,b)=>a+b.credit,0);
+  const outflow = S.txns.reduce((a,b)=>a+b.debit,0);
+
+  /* ---------- 1. SUMMARY ---------- */
+  const s1 = wb.addWorksheet('Summary', {properties:{tabColor:{argb:AMBER}}});
+  s1.mergeCells('A1:D1');
+  s1.getCell('A1').value = 'StatementIQ — statement analysis';
+  s1.getCell('A1').font = {bold:true, size:16, color:{argb:CHARCOAL}};
+  s1.getCell('A2').value = 'Generated ' + new Date().toLocaleString('en-IN');
+  s1.getCell('A2').font = {italic:true, size:9, color:{argb:'FF767680'}};
+  let r = 4;
+  const sect = title=>{
+    s1.getCell('A'+r).value = title;
+    s1.getCell('A'+r).font = {bold:true, size:11, color:{argb:'FFFFFFFF'}};
+    s1.getCell('A'+r).fill = {type:'pattern',pattern:'solid',fgColor:{argb:CHARCOAL}};
+    s1.mergeCells('A'+r+':D'+r); r++;
+  };
+  const line = (k,v,fmt)=>{
+    s1.getCell('A'+r).value = k; s1.getCell('A'+r).font={bold:true,size:10};
+    const c = s1.getCell('B'+r); c.value = v;
+    if(fmt) c.numFmt = fmt;
+    r++;
+  };
+  sect('Statements loaded');
+  S.sets.forEach(d=> line(d.name, (d.kind==='card'?'Credit card · ':'Bank · ')+d.rows.length+' rows'));
+  r++;
+  sect('Period & totals');
+  const dates = S.txns.map(t=>t.date).sort((a,b)=>a-b);
+  line('Period from', dates[0]); s1.getCell('B'+(r-1)).numFmt='dd-mmm-yyyy';
+  line('Period to', dates[dates.length-1]); s1.getCell('B'+(r-1)).numFmt='dd-mmm-yyyy';
+  line('Months covered', months.size);
+  line('Total inflow', inflow, INR_FMT);
+  line('Total outflow', outflow, INR_FMT);
+  line('Net', inflow-outflow, INR_FMT);
+  line('Average monthly outflow', outflow/(months.size||1), INR_FMT);
+  r++;
+  sect('Integrity check');
+  S.sets.filter(d=>d.kind==='bank').forEach(d=>{
+    const chk = d.integrity || checkIntegrity(d.rows, d.pagesText);
+    line(d.name+' — opening', chk.opening, INR_FMT);
+    line(d.name+' — closing', chk.closing, INR_FMT);
+    line(d.name+' — result', chk.ok===true?'RECONCILES':chk.ok===false?('DOES NOT RECONCILE — difference '+inr(chk.diff)):'Not verifiable — no opening/closing balance found');
+    s1.getCell('B'+(r-1)).font = {bold:true, color:{argb: chk.ok===true?GREEN:RUST}};
+    line(d.name+' — rows extracted / parsed / failed', d.rows.length+' / '+d.rows.length+' / '+(d.errors?d.errors.length:0));
+    line(d.name+' — balance breaks', chk.breaks.length);
+    line(d.name+' — possible duplicates', chk.dupes.length);
+  });
+  r++;
+  sect('Key metrics');
+  const charges = bank.filter(t=>t.category==='Bank Charges').reduce((a,b)=>a+b.debit,0);
+  const cash = bank.filter(t=>t.category==='Cash Withdrawal'||t.channel==='ATM').reduce((a,b)=>a+b.debit,0);
+  const emi = bank.filter(t=>t.category==='EMI & Loan').reduce((a,b)=>a+b.debit,0);
+  const sal = detectSalary(bank);
+  line('Bank charges & fees', charges, INR_FMT);
+  line('Cash withdrawn', cash, INR_FMT);
+  line('EMI paid', emi, INR_FMT);
+  line('Average monthly salary', sal?sal.avg:0, INR_FMT);
+  widths(s1, [42,26,16,16]);
+
+  /* ---------- 2. TRANSACTIONS ---------- */
+  const s2 = wb.addWorksheet('Transactions', {properties:{tabColor:{argb:CHARCOAL}}});
+  s2.addRow(['Date','Narration','Reference','Category','Channel','Counterparty','Debit','Credit','Balance','Source']);
+  S.txns.forEach(t=>{
+    const row = s2.addRow([t.date, t.narration, t.ref, t.category, t.channel, t.counterparty,
+      t.debit||null, t.credit||null, t.balance===null?null:t.balance, t.source]);
+    row.getCell(1).numFmt = 'dd-mmm-yyyy';
+    [7,8,9].forEach(i=>{ row.getCell(i).numFmt = INR_FMT; });
+    row.getCell(7).font = {color:{argb:RUST}};
+    row.getCell(8).font = {color:{argb:GREEN}};
+  });
+  // Live SUM() formulas so the totals stay true if the user edits a cell.
+  const lastRow = s2.rowCount;
+  const tot = s2.addRow(['TOTAL','','','','','',
+    {formula:'SUM(G2:G'+lastRow+')'}, {formula:'SUM(H2:H'+lastRow+')'}, '', '']);
+  tot.font = {bold:true};
+  tot.eachCell(c=>{ c.border = {top:{style:'double', color:{argb:CHARCOAL}}}; });
+  tot.getCell(7).numFmt = INR_FMT; tot.getCell(8).numFmt = INR_FMT;
+  styleHeader(s2, 10);
+  widths(s2, [12,52,18,20,15,26,15,15,16,26]);
+
+  /* ---------- 3. CATEGORY SUMMARY ---------- */
+  const s3 = wb.addWorksheet('Category Summary', {properties:{tabColor:{argb:RUST}}});
+  s3.addRow(['Category','Transactions','Total debit','Total credit','% of spend']);
+  const catMap = {};
+  S.txns.forEach(t=>{ (catMap[t.category]=catMap[t.category]||{n:0,d:0,c:0}); catMap[t.category].n++; catMap[t.category].d+=t.debit; catMap[t.category].c+=t.credit; });
+  const spendTotal = Object.values(catMap).reduce((a,b)=>a+b.d,0);
+  Object.entries(catMap).sort((a,b)=>b[1].d-a[1].d).forEach(e=>{
+    const row = s3.addRow([e[0], e[1].n, e[1].d||null, e[1].c||null, spendTotal? e[1].d/spendTotal : 0]);
+    row.getCell(3).numFmt=INR_FMT; row.getCell(4).numFmt=INR_FMT; row.getCell(5).numFmt='0.0%';
+    row.getCell(3).font={color:{argb:RUST}}; row.getCell(4).font={color:{argb:GREEN}};
+  });
+  const c3last = s3.rowCount;
+  const t3 = s3.addRow(['TOTAL', {formula:'SUM(B2:B'+c3last+')'}, {formula:'SUM(C2:C'+c3last+')'}, {formula:'SUM(D2:D'+c3last+')'}, '']);
+  t3.font={bold:true}; t3.getCell(3).numFmt=INR_FMT; t3.getCell(4).numFmt=INR_FMT;
+  styleHeader(s3, 5); widths(s3,[26,15,18,18,12]);
+
+  /* ---------- 4. MONTHLY TREND ---------- */
+  const s4 = wb.addWorksheet('Monthly Trend', {properties:{tabColor:{argb:GREEN}}});
+  s4.addRow(['Month','Income','Expense','Net']);
+  const mm = {};
+  S.txns.forEach(t=>{ const k=monthKey(t.date); if(!k) return; (mm[k]=mm[k]||{i:0,e:0}); mm[k].i+=t.credit; mm[k].e+=t.debit; });
+  Object.keys(mm).sort().forEach(k=>{
+    const row = s4.addRow([monthLabel(k), mm[k].i, mm[k].e, mm[k].i-mm[k].e]);
+    [2,3,4].forEach(i=>row.getCell(i).numFmt=INR_FMT);
+    row.getCell(3).font={color:{argb:RUST}}; row.getCell(2).font={color:{argb:GREEN}};
+  });
+  styleHeader(s4, 4); widths(s4,[14,18,18,18]);
+  s4.getCell('F2').value = 'Select A1:D'+s4.rowCount+' and press Alt+F1 to chart this.';
+  s4.getCell('F2').font = {italic:true, size:9, color:{argb:'FF767680'}};
+
+  /* ---------- 5. RECURRING & SUBSCRIPTIONS ---------- */
+  const s5 = wb.addWorksheet('Recurring & Subscriptions', {properties:{tabColor:{argb:'FF7A5CFA'}}});
+  s5.addRow(['Counterparty','Category','Cadence','Times seen','Typical amount','Paid so far','Annualised cost','Last seen']);
+  detectRecurring(bank.length?bank:S.txns).forEach(x=>{
+    const row = s5.addRow([x.counterparty, x.category, x.cadence, x.count, x.avg, x.total, x.annual, x.last]);
+    [5,6,7].forEach(i=>row.getCell(i).numFmt=INR_FMT);
+    row.getCell(7).font={bold:true, color:{argb:RUST}};
+    row.getCell(8).numFmt='dd-mmm-yyyy';
+  });
+  styleHeader(s5, 8); widths(s5,[30,20,14,12,16,16,18,14]);
+
+  /* ---------- 6. CARD SUMMARY ---------- */
+  if(S.cardMeta.length){
+    const s6 = wb.addWorksheet('Card Summary', {properties:{tabColor:{argb:'FF0FA3B1'}}});
+    s6.addRow(['Field'].concat(S.cardMeta.map(c=>c.source)));
+    const fields = [
+      ['Issuer', c=>c.issuer], ['Card ending', c=>c.last4], ['Cardholder', c=>c.holder],
+      ['Statement date', c=>c.stmtDate], ['Payment due date', c=>c.dueDate],
+      ['Opening balance', c=>c.opening, INR_FMT], ['Payments & credits', c=>c.payments, INR_FMT],
+      ['Purchases & charges', c=>c.purchases, INR_FMT], ['Total amount due', c=>c.totalDue, INR_FMT],
+      ['Minimum amount due', c=>c.minDue, INR_FMT], ['Credit limit', c=>c.limit, INR_FMT],
+      ['Available credit limit', c=>c.availLimit, INR_FMT], ['Available cash limit', c=>c.cashLimit, INR_FMT],
+      ['Reward points opening', c=>c.rpOpening], ['Points earned', c=>c.rpEarned],
+      ['Points redeemed', c=>c.rpRedeemed], ['Points closing', c=>c.rpClosing]
+    ];
+    fields.forEach(f=>{
+      const row = s6.addRow([f[0]].concat(S.cardMeta.map(c=>{ const v=f[1](c); return (v===null||v===undefined)?'—':v; })));
+      row.getCell(1).font={bold:true};
+      for(let i=2;i<=S.cardMeta.length+1;i++){
+        if(f[2]) row.getCell(i).numFmt = f[2];
+        if(f[0].includes('date')) row.getCell(i).numFmt = 'dd-mmm-yyyy';
+      }
+    });
+    // card-specific derived metrics
+    const t = cardTxns();
+    const fees = t.filter(x=>x.debit>0 && FEE_RX.test(x.narration)).reduce((a,b)=>a+b.debit,0);
+    const m = S.cardMeta[0];
+    const util = (m.limit && m.totalDue) ? m.totalDue/m.limit : null;
+    s6.addRow([]);
+    const u1 = s6.addRow(['Cost of this card (fees, interest, GST)', fees]); u1.getCell(1).font={bold:true}; u1.getCell(2).numFmt=INR_FMT; u1.getCell(2).font={color:{argb:RUST},bold:true};
+    const u2 = s6.addRow(['Credit utilisation', util===null?'—':util]); u2.getCell(1).font={bold:true}; if(util!==null){ u2.getCell(2).numFmt='0.0%'; u2.getCell(2).font={color:{argb:util>0.3?RUST:GREEN},bold:true}; }
+    styleHeader(s6, S.cardMeta.length+1);
+    widths(s6, [34].concat(S.cardMeta.map(()=>24)));
+  }
+
+  /* ---------- 7. RECONCILIATION ---------- */
+  const s7 = wb.addWorksheet('Reconciliation', {properties:{tabColor:{argb:'FF4B7BE5'}}});
+  s7.addRow(['Section','Date','Detail','Amount','Counter date','Counter detail','Counter amount','Difference']);
+  const push = (section, a, b, diff)=>{
+    const row = s7.addRow([section, a?a.date:'', a?a.narration:'', a?(a.debit||a.credit):'',
+      b?b.date:'', b?b.narration:'', b?(b.debit||b.credit):'', diff===undefined?'':diff]);
+    if(a) row.getCell(2).numFmt='dd-mmm-yyyy';
+    if(b) row.getCell(5).numFmt='dd-mmm-yyyy';
+    [4,7,8].forEach(i=>row.getCell(i).numFmt=INR_FMT);
+    if(/not in|unmatched|mismatch/i.test(section)) row.getCell(1).font={color:{argb:RUST},bold:true};
+    else row.getCell(1).font={color:{argb:GREEN}};
+  };
+  if(S.recon.c2b){
+    S.recon.c2b.matched.forEach(m=>push('Card↔Bank matched', m.bank, m.card, 0));
+    S.recon.c2b.bankOnly.forEach(b=>push('In bank, not on card', b, null));
+    S.recon.c2b.cardOnly.forEach(c=>push('On card, not in bank', c, null));
+  }
+  if(S.recon.b2b){
+    S.recon.b2b.matched.forEach(m=>push('Book↔Bank matched (pass '+m.pass+')', m.book, m.bank, 0));
+    S.recon.b2b.mismatch.forEach(m=>push('Amount mismatch', m.book, m.bank, m.diff));
+    S.recon.b2b.bankOnly.forEach(b=>push('In bank, not in books', b, null));
+    S.recon.b2b.bookOnly.forEach(b=>push('In books, not in bank', b, null));
+  }
+  if(s7.rowCount===1) s7.addRow(['No reconciliation has been run yet — open the Reconciliation tab and run one.']);
+  styleHeader(s7, 8); widths(s7,[30,12,44,15,13,40,15,14]);
+
+  /* ---------- 8. ERRORS & WARNINGS ---------- */
+  const s8 = wb.addWorksheet('Errors & Warnings', {properties:{tabColor:{argb:RUST}}});
+  s8.addRow(['File','Type','Line / Date','Detail','Amount 1','Amount 2']);
+  S.sets.forEach(d=>{
+    (d.errors||[]).forEach(e=> s8.addRow([d.name,'Row failed to parse','line '+e.line, e.raw.slice(0,220)+' — '+e.why,'','']));
+    const chk = d.integrity || checkIntegrity(d.rows, d.pagesText);
+    chk.breaks.forEach(b=>{
+      const row = s8.addRow([d.name,'Balance break', b.date, b.narration.slice(0,120), b.expected, b.found]);
+      row.getCell(5).numFmt=INR_FMT; row.getCell(6).numFmt=INR_FMT;
+    });
+    chk.dupes.forEach(x=>{
+      const row = s8.addRow([d.name,'Possible duplicate', fmtDate(x.date), x.narration.slice(0,120), x.debit||x.credit,'']);
+      row.getCell(5).numFmt=INR_FMT;
+    });
+    if(chk.ok===false) s8.addRow([d.name,'Integrity','—','Opening + credits − debits does not equal closing', chk.diff,'']);
+    if(d.ambiguousDates) s8.addRow([d.name,'Ambiguous dates','—', d.ambiguousDates+' dates could be read either DD/MM or MM/DD. Read as DD/MM — verify against the original.','','']);
+  });
+  if(s8.rowCount===1) s8.addRow(['—','None','','Every row parsed cleanly and all integrity checks passed.','','']);
+  styleHeader(s8, 6); widths(s8,[26,22,14,70,16,16]);
+
+  const buf = await wb.xlsx.writeBuffer();
+  saveBlob(new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),
+    'StatementIQ-'+new Date().toISOString().slice(0,10)+'.xlsx');
+  setStep(5);
+  toast('Workbook downloaded. Eight sheets, all figures live.','ok');
+}
+function saveBlob(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+document.getElementById('btnExport').onclick = exportExcel;
+document.addEventListener('keydown', e=>{
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='e'){ e.preventDefault(); exportExcel(); }
+});
+
+function exportCsv(){
+  if(!S.txns.length){ toast('Nothing to export yet.','err'); return; }
+  const head = ['Date','Narration','Reference','Category','Channel','Counterparty','Debit','Credit','Balance','Source'];
+  const q = v => '"' + String(v===null||v===undefined?'':v).replace(/"/g,'""') + '"';
+  const csv = [head.join(',')].concat(S.txns.map(t=>[
+    fmtDate(t.date), t.narration, t.ref, t.category, t.channel, t.counterparty,
+    t.debit||'', t.credit||'', t.balance===null?'':t.balance, t.source
+  ].map(q).join(','))).join('\n');
+  saveBlob(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'}), 'StatementIQ-transactions.csv');
+  toast('CSV downloaded.','ok');
+}
+document.getElementById('btnCsv').onclick = exportCsv;
+
+/* ============================================================================
+   18. SAMPLE DATA — entirely fabricated, so the tool can be tried without
+   feeding it a real statement.
+   ========================================================================== */
+function d2(n){ return String(n).padStart(2,'0'); }
+let _sampleBank = null;
+function sampleBankGrid(){
+  if(_sampleBank) return _sampleBank;          // same statement every time it is asked for
+  _sampleBank = buildSampleBank();
+  return _sampleBank;
+}
+function buildSampleBank(){
+  const rows = [['Date','Narration','Chq/Ref No','Withdrawal Amt','Deposit Amt','Closing Balance']];
+  let bal = 184320.50;
+  const yr = new Date().getFullYear();
+  const startMonth = new Date().getMonth() - 2;
+  const monthly = [
+    [1,'ACH D- HDFC LTD HOME LOAN EMI-8842','ACH0088421', 38450, 0],
+    [2,'UPI/DR/451234567890/JIO RECHARGE/HDFC/jio@ybl/Payment','UPI451234', 799, 0],
+    [3,'NEFT DR-ICIC0000123-BAJAJ ALLIANZ LIFE INS-PREMIUM','NEFT77321', 4212, 0],
+    [4,'UPI/DR/562341789012/SWIGGY/ICIC/swiggy@icici/Payment','UPI562341', 486, 0],
+    [5,'ACH D- NETFLIX ENTERTAINMENT SUBSCRIPTION','ACH1120934', 649, 0],
+    [6,'UPI/DR/778812340098/BIGBASKET DAILY/AXIS/bb@axis/Payment','UPI778812', 3241.75, 0],
+    [7,'ATW-483920XXXXXX8821 ATM CASH WDL VIRAR W','ATM8821', 10000, 0],
+    [8,'UPI/DR/990112334455/INDIAN OIL PETROL PUMP/SBIN/io@sbi','UPI990112', 2500, 0],
+    [9,'POS 483920XXXXXX8821 DMART VIRAR MH','POS44120', 4820.40, 0],
+    [10,'ACH D- SPOTIFY INDIA PREMIUM SUBSCRIPTION','ACH9921', 119, 0],
+    [12,'NEFT DR-HDFC0000060-HDFC CREDIT CARD PAYMENT-8821','NEFT99120', 42180.60, 0],
+    [14,'UPI/DR/334455667788/AMAZON PAY INDIA/YESB/amazon@ybl','UPI334455', 2199, 0],
+    [15,'ACH D- SIP AXIS MUTUAL FUND FOLIO 99120','ACH55120', 15000, 0],
+    [16,'UPI/DR/112233445566/UBER INDIA SYSTEMS/HDFC/uber@hdfc','UPI112233', 342, 0],
+    [18,'NEFT DR-KKBK0000456-SANJAY PROPERTIES RENT','NEFT12233', 32000, 0],
+    [20,'UPI/DR/665544332211/ZOMATO LTD/PYTM/zomato@paytm','UPI665544', 728.50, 0],
+    [22,'MSEB ELECTRICITY BILL PAYMENT VIA BILLDESK','BD772110', 2840, 0],
+    [24,'UPI/DR/443322110099/APOLLO PHARMACY/ICIC/apollo@icici','UPI443322', 1265, 0],
+    [25,'CHARGES-SMS ALERT FACILITY-INCL GST','CHRG0091', 17.70, 0],
+    [26,'UPI/DR/556677889900/MYNTRA DESIGNS/HDFC/myntra@hdfc','UPI556677', 3499, 0],
+    [27,'UPI/DR/221133445577/BLINKIT COMMERCE/AXIS/blinkit@axl','UPI221133', 1187.25, 0],
+    [28,'NEFT CR-UTIB0000212-SKILL INTELLECT LLP-SALARY','NEFT'+Math.floor(Math.random()*90000), 0, 165000]
+  ];
+  for(let m=0;m<3;m++){
+    const mon = startMonth + m;
+    const dt = new Date(yr, mon, 1);
+    monthly.forEach(row=>{
+      const day = Math.min(row[0], 28);
+      const dd = d2(day)+'/'+d2(dt.getMonth()+1)+'/'+dt.getFullYear();
+      let wd = row[3], dep = row[4];
+      // amounts drift a little month to month, as they do in real life — except
+      // the card bill payment, which must tie exactly to the card statement.
+      const fixed = /CREDIT CARD PAYMENT/.test(row[1]);
+      if(wd && !fixed) wd = +(wd * (0.94 + Math.random()*0.12)).toFixed(2);
+      if(dep) dep = +(dep + (m===2?4200:0)).toFixed(2);
+      bal = +(bal - wd + dep).toFixed(2);
+      rows.push([dd, row[1], row[2], wd?wd.toFixed(2):'', dep?dep.toFixed(2):'', bal.toFixed(2)]);
+    });
+    // a wrapped narration line, exactly like a real PDF produces
+    rows.push(['', 'REF NO 8821 CONTD PAYMENT TOWARDS CARD', '', '', '', '']);
+  }
+  return rows;
+}
+function sampleCardGrid(){
+  const yr = new Date().getFullYear(), mon = new Date().getMonth()-1;
+  const rows = [['Transaction Date','Transaction Details','Amount (INR)']];
+  const data = [
+    [2,'SWIGGY BANGALORE IN', 842.00],[3,'AMAZON.IN MUMBAI', 4299.00],
+    [4,'UBER INDIA MUMBAI', 268.00],[5,'BOOKMYSHOW MUMBAI', 1180.00],
+    [6,'INDIGO AIRLINES GURGAON', 8420.00],[7,'NETFLIX.COM SINGAPORE USD 9.99', 869.00],
+    [8,'STARBUCKS VIRAR MH', 520.00],[9,'CROMA RETAIL THANE', 14990.00],
+    [11,'HPCL PETROL PUMP VASAI', 3000.00],[12,'PAYMENT RECEIVED - THANK YOU', -42180.60],
+    [13,'DMART VIRAR MH', 2860.50],[14,'APOLLO PHARMACY VIRAR', 985.00],
+    [15,'EMI INSTALMENT 04/12 - MACBOOK PURCHASE', 8250.00],
+    [16,'ZOMATO LIMITED GURGAON', 645.00],[17,'MYNTRA DESIGNS BANGALORE', 2199.00],
+    [18,'REFUND MYNTRA DESIGNS BANGALORE', -2199.00],
+    [19,'ADOBE SYSTEMS SOFTWARE USD 22.99', 1998.00],
+    [20,'FINANCE CHARGES ON EXTENDED CREDIT', 1245.30],
+    [20,'IGST ON FINANCE CHARGES @18%', 224.15],
+    [21,'LATE PAYMENT FEE', 500.00],[21,'GST ON LATE PAYMENT FEE', 90.00],
+    [22,'BIGBASKET BANGALORE', 3120.00],[23,'IRCTC RAIL CONNECT NEW DELHI', 1840.00],
+    [24,'PVR CINEMAS MUMBAI', 960.00],[25,'RELIANCE DIGITAL THANE', 5499.00]
+  ];
+  data.forEach(d=>{
+    rows.push([d2(d[0])+'/'+d2(mon+1)+'/'+yr, d[1], d[2]<0 ? Math.abs(d[2]).toFixed(2)+' Cr' : d[2].toFixed(2)+' Dr']);
+  });
+  return rows;
+}
+function sampleCardText(){
+  const yr = new Date().getFullYear(), mon = new Date().getMonth()-1;
+  const due = new Date(yr, mon+1, 18);
+  return 'HDFC BANK CREDIT CARD STATEMENT Card No 4839 20XX XXXX 8821 Cardholder: DEMO USER '+
+    'Statement Period 01/'+d2(mon+1)+'/'+yr+' to 28/'+d2(mon+1)+'/'+yr+' Statement Date 28/'+d2(mon+1)+'/'+yr+' '+
+    'Payment Due Date '+d2(due.getDate())+'/'+d2(due.getMonth()+1)+'/'+due.getFullYear()+' '+
+    'Opening Balance 42,180.60 Payments and Credits 44,379.60 Purchases and Other Charges 63,152.95 '+
+    'Total Amount Due 60,953.95 Minimum Amount Due 3,050.00 '+
+    'Total Credit Limit 2,50,000.00 Available Credit Limit 1,89,046.05 Available Cash Limit 50,000.00 '+
+    'Opening Points 12,400 Points Earned 1,842 Points Redeemed 0 Closing Points 14,242';
+}
+function sampleBooks(){
+  const bank = sampleBankGrid();
+  const rows = [['Date','Particulars','Voucher No','Payment','Receipt']];
+  // Deliberately imperfect, so all three matching passes have something to do.
+  bank.slice(1).forEach((r,i)=>{
+    if(!r[0]) return;
+    if(i % 11 === 5) return;                                    // entry missing from the books
+    let pay = r[3], rec = r[4], date = r[0], ref = r[2];
+    if(i % 3 === 0) ref = '';                                   // no voucher number -> pass 2
+    if(i % 9 === 4){                                            // late entry, rounded amount -> pass 3
+      ref = '';
+      const d = parseDate(r[0]); d.setDate(d.getDate()+2); date = fmtDate(d);
+      if(pay) pay = (parseFloat(pay)+5).toFixed(2);
+    }
+    if(i % 17 === 3 && pay) pay = (parseFloat(pay)+100).toFixed(2);  // a real amount mismatch
+    rows.push([date, r[1].slice(0,45), ref, pay, rec]);
+  });
+  rows.push(['0'+'1/'+d2(new Date().getMonth()+1)+'/'+new Date().getFullYear(),'CHEQUE ISSUED TO VENDOR - NOT YET BANKED','CHQ00921','18500.00','']);
+  return rows;
+}
+function loadSample(){
+  clearAll(true);
+  const bg = sampleBankGrid();
+  const bank = {id:'d0', name:'sample-bank-statement.pdf', kind:'bank', grid:bg, headerIdx:0,
+    roles: rolesFromHeader(bg[0]), pagesText:'Opening Balance 1,84,320.50 Closing Balance 0.00'};
+  bank.rows = buildRows(bank);
+  bank.pagesText = 'Opening Balance 1,84,320.50';           // let the balance column supply the closing figure
+  S.sets.push(bank);
+  S.files.push({id:'f0', name:bank.name, size:184320, status:'Parsed', kind:'bank', note:bank.rows.length+' rows'});
+
+  const cg = sampleCardGrid();
+  const card = {id:'d1', name:'sample-credit-card.pdf', kind:'card', grid:cg, headerIdx:0,
+    roles: rolesFromHeader(cg[0]), pagesText: sampleCardText()};
+  card.rows = buildRows(card);
+  card.card = parseCardSummary(card.pagesText, card.name);
+  card.card.setId = card.id;
+  S.cardMeta.push(card.card);
+  S.sets.push(card);
+  S.files.push({id:'f1', name:card.name, size:92100, status:'Parsed', kind:'card', note:card.rows.length+' rows'});
+
+  document.getElementById('uploadEmpty').style.display='none';
+  renderFiles(); renderMapping(); buildReview(); runAnalysis();
+  toast('Sample data loaded. Every figure here is invented.','ok');
+}
+document.getElementById('btnSample').onclick = loadSample;
+
+/* ============================================================================
+   19. CLEAR, THEME, INIT
+   ========================================================================== */
+function clearAll(silent){
+  if(!silent && !confirm('Wipe every statement, transaction and reconciliation from memory?\n\nNothing was ever uploaded, so this simply empties the page. Your learned category rules are kept — clear those separately from your browser settings.')) return;
+  S.files=[]; S.sets=[]; S.txns=[]; S.cardMeta=[]; S.books=null;
+  S.recon={c2b:null,b2b:null};
+  Object.values(S.charts).forEach(c=>{ try{c.destroy();}catch(e){} });
+  S.charts={};
+  ['fileList','mapBody','c2bOut','b2bOut','consOut','perOut','bookMap','bankIntegrity'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
+  ['mapCard','reviewCard','bankBody','cardBody','bookRunRow'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  ['bankEmpty','cardEmpty','uploadEmpty'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='block'; });
+  document.getElementById('pillBank').textContent='0';
+  document.getElementById('pillCard').textContent='0';
+  document.getElementById('bookName').textContent='';
+  setStep(1);
+  if(!silent){ switchPanel('pUpload'); toast('All data cleared from this browser session.','ok'); }
+}
+document.getElementById('btnClear').onclick = ()=>clearAll(false);
+
+document.getElementById('btnTheme').onclick = ()=>{
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme', dark?'light':'dark');
+  document.getElementById('btnTheme').textContent = dark ? '🌙 Dark' : '☀️ Light';
+  try{ localStorage.setItem('siq_theme', dark?'light':'dark'); }catch(e){}
+  if(S.txns.length){ if(bankTxns().length) renderBank(); if(cardTxns().length) renderCard(); }
+};
+
+// help table
+document.getElementById('helpTbl').innerHTML =
+  '<thead><tr><th>Sheet</th><th>What is on it</th></tr></thead><tbody>'+
+  [['Summary','Account details, period, opening and closing balance, totals, integrity result, key metrics'],
+   ['Transactions','Every parsed row with category, channel, counterparty and a live SUM() totals row'],
+   ['Category Summary','Category totals, counts and share of spend — ready to pivot'],
+   ['Monthly Trend','Month-wise income, expense and net, laid out to chart in two clicks'],
+   ['Recurring & Subscriptions','Detected recurring payments with cadence and annualised cost'],
+   ['Card Summary','The credit card statement block and card metrics, when a card statement is loaded'],
+   ['Reconciliation','Matched items, with unmatched items on both sides clearly separated'],
+   ['Errors & Warnings','Rows that failed to parse, balance breaks, duplicates and integrity warnings']]
+  .map(r=>'<tr><td><b>'+r[0]+'</b></td><td>'+r[1]+'</td></tr>').join('')+'</tbody>';
+
+// init
+(function init(){
+  loadLearned();
+  try{
+    if(localStorage.getItem('siq_theme')==='dark'){
+      document.documentElement.setAttribute('data-theme','dark');
+      document.getElementById('btnTheme').textContent='☀️ Light';
+    }
+  }catch(e){}
+  renderFiles();
+  console.log('%cStatementIQ','background:#0E0E10;color:#F5B301;padding:3px 8px;border-radius:4px','running offline. No network calls are made with your statement data.');
+})();
+</script>
+</body>
+</html>

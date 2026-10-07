@@ -1,0 +1,3078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SalaryLens — CTC Decoder &amp; Offer Comparator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SALARYLENS — DESIGN TOKENS
+   Change any colour here and it updates everywhere in the app.
+   ============================================================ */
+:root{
+  --charcoal:#0E0E10;      /* primary text */
+  --amber:#F5B301;         /* primary buttons, active states, hero number */
+  --amber-dark:#C88F00;
+  --cream:#F4EDE2;         /* page background */
+  --rust:#E2582B;          /* deductions, warnings */
+  --green:#1B8A5A;         /* savings, winners */
+  --green-soft:#E4F4EC;
+  --card:#FFFFFF;
+  --ink-2:#4A4A52;         /* secondary text */
+  --ink-3:#7A7A85;         /* muted text */
+  --line:#E6DED0;          /* borders */
+  --shadow:0 2px 4px rgba(14,14,16,.04), 0 8px 24px rgba(14,14,16,.06);
+  --shadow-lg:0 8px 40px rgba(14,14,16,.12);
+  --r:12px;                /* rounded corners */
+  --r-sm:8px;
+  --maxw:1280px;
+}
+/* Dark mode overrides — toggled by data-theme on <html> */
+html[data-theme="dark"]{
+  --charcoal:#F2F0EC;
+  --cream:#131316;
+  --card:#1C1C21;
+  --ink-2:#B8B6BE;
+  --ink-3:#8A8894;
+  --line:#2E2E36;
+  --green-soft:#12291F;
+  --shadow:0 2px 4px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  --shadow-lg:0 8px 40px rgba(0,0,0,.5);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--cream);
+  color:var(--charcoal);
+  font-family:'IBM Plex Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  transition:background .2s ease,color .2s ease;
+}
+h1,h2,h3,h4,h5{font-family:'Poppins',system-ui,sans-serif;margin:0 0 .4em;line-height:1.2;letter-spacing:-.01em}
+h1{font-size:1.6rem;font-weight:800}
+h2{font-size:1.25rem;font-weight:700}
+h3{font-size:1.02rem;font-weight:600}
+h4{font-size:.9rem;font-weight:600}
+p{margin:0 0 .8em}
+a{color:var(--amber-dark)}
+small{font-size:.8rem}
+
+/* Every number in the app uses tabular figures so digit columns line up */
+.num,table td,table th,input[type=number],.hero-amount,.stat-value{
+  font-variant-numeric:tabular-nums lining-nums;
+  font-feature-settings:"tnum" 1,"lnum" 1;
+}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+
+/* ---------- Header ---------- */
+header.app{
+  background:var(--card);border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:40;box-shadow:var(--shadow)
+}
+.hdr-row{display:flex;align-items:center;gap:16px;padding:12px 0;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;font-family:'Poppins';font-weight:800;font-size:1.15rem;letter-spacing:-.02em}
+.logo .lens{
+  width:30px;height:30px;border-radius:9px;background:var(--amber);
+  display:grid;place-items:center;color:#0E0E10;font-size:15px;flex:none
+}
+.logo small{display:block;font-weight:500;font-size:.68rem;color:var(--ink-3);letter-spacing:.02em;font-family:'IBM Plex Sans'}
+.hdr-spacer{flex:1}
+.fy-chip{
+  background:var(--charcoal);color:var(--cream);border-radius:999px;
+  padding:5px 12px;font-size:.75rem;font-weight:600;letter-spacing:.02em
+}
+html[data-theme="dark"] .fy-chip{background:var(--amber);color:#0E0E10}
+
+.privacy-bar{
+  background:var(--green-soft);border:1px solid rgba(27,138,90,.28);
+  color:var(--green);border-radius:var(--r);padding:9px 14px;
+  font-size:.83rem;font-weight:600;display:flex;align-items:center;gap:8px;margin:12px 0
+}
+html[data-theme="dark"] .privacy-bar{color:#5FD9A0}
+.fy-note{font-size:.78rem;color:var(--ink-3);margin:-4px 0 14px}
+
+/* ---------- Tabs ---------- */
+.tabs{display:flex;gap:6px;padding-bottom:0}
+.tab{
+  appearance:none;border:1px solid transparent;background:transparent;
+  font-family:'Poppins';font-weight:600;font-size:.92rem;color:var(--ink-3);
+  padding:10px 18px;border-radius:var(--r) var(--r) 0 0;cursor:pointer;
+  border-bottom:3px solid transparent;transition:.15s
+}
+.tab:hover{color:var(--charcoal)}
+.tab.active{color:var(--charcoal);border-bottom-color:var(--amber);background:var(--card)}
+
+/* ---------- Cards & layout ---------- */
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:20px;box-shadow:var(--shadow);margin-bottom:18px
+}
+.card.tight{padding:14px 16px}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.card-head h2,.card-head h3{margin:0}
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.split{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:18px;align-items:start}
+@media(max-width:980px){.split{grid-template-columns:1fr}.g3,.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+/* ---------- Form controls ---------- */
+label.fld{display:block;margin-bottom:12px}
+label.fld > span.lbl{display:block;font-size:.78rem;font-weight:600;color:var(--ink-2);margin-bottom:4px;letter-spacing:.01em}
+input[type=text],input[type=number],select,textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--card);color:var(--charcoal);font-family:inherit;font-size:.92rem;
+  transition:border .15s,box-shadow .15s
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,179,1,.22)}
+input.bad{border-color:var(--rust);box-shadow:0 0 0 3px rgba(226,88,43,.16)}
+textarea{font-family:'IBM Plex Mono',monospace;font-size:.8rem;line-height:1.5}
+.err{color:var(--rust);font-size:.75rem;font-weight:600;margin-top:3px;display:none}
+.err.show{display:block}
+.hint{color:var(--ink-3);font-size:.74rem;margin-top:3px}
+
+input[type=range]{width:100%;accent-color:var(--amber);height:22px}
+.range-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.range-val{font-weight:700;color:var(--amber-dark);font-size:.92rem}
+html[data-theme="dark"] .range-val{color:var(--amber)}
+
+.btn{
+  appearance:none;border:1px solid var(--charcoal);background:var(--charcoal);color:var(--cream);
+  font-family:'Poppins';font-weight:600;font-size:.86rem;padding:9px 16px;border-radius:var(--r-sm);
+  cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px
+}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+.btn:active{transform:none}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:#0E0E10}
+.btn.ghost{background:transparent;color:var(--charcoal);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--charcoal)}
+.btn.danger{background:transparent;color:var(--rust);border-color:rgba(226,88,43,.4)}
+.btn.sm{padding:6px 11px;font-size:.78rem}
+.btn:focus-visible,.tab:focus-visible,.chip:focus-visible{outline:3px solid rgba(245,179,1,.5);outline-offset:2px}
+
+.switch{display:flex;align-items:center;gap:9px;font-size:.86rem;padding:7px 0;cursor:pointer}
+.switch input{width:36px;height:20px;appearance:none;background:var(--line);border-radius:999px;position:relative;cursor:pointer;transition:.2s;flex:none}
+.switch input:checked{background:var(--amber)}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+.switch input:checked::after{left:18px}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  border:1px solid var(--line);background:transparent;color:var(--ink-2);
+  border-radius:999px;padding:6px 13px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit
+}
+.chip.active{background:var(--amber);border-color:var(--amber);color:#0E0E10}
+
+/* ---------- Hero in-hand number ---------- */
+.hero{
+  background:var(--charcoal);color:var(--cream);border-radius:var(--r);
+  padding:26px 24px;box-shadow:var(--shadow-lg);margin-bottom:18px;position:relative;overflow:hidden
+}
+html[data-theme="dark"] .hero{border:1px solid var(--line)}
+.hero::after{
+  content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;
+  border-radius:50%;background:radial-gradient(circle,rgba(245,179,1,.18),transparent 70%)
+}
+.hero-label{font-size:.8rem;letter-spacing:.09em;text-transform:uppercase;color:rgba(244,237,226,.62);font-weight:600;margin-bottom:2px}
+.hero-amount{font-family:'Poppins';font-weight:800;font-size:clamp(2.4rem,7vw,3.9rem);line-height:1;color:var(--amber);letter-spacing:-.03em}
+.hero-sub{color:rgba(244,237,226,.78);font-size:.9rem;margin-top:8px;position:relative;z-index:1}
+.hero-gap{margin-top:14px;padding-top:14px;border-top:1px solid rgba(244,237,226,.16);font-size:.88rem;position:relative;z-index:1}
+.hero-gap b{color:var(--amber)}
+.hero-pills{display:flex;gap:22px;flex-wrap:wrap;margin-top:14px;position:relative;z-index:1}
+.hero-pill .k{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:rgba(244,237,226,.55);font-weight:600}
+.hero-pill .v{font-family:'Poppins';font-weight:700;font-size:1.05rem}
+
+/* ---------- Stat tiles ---------- */
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.stat-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:700;margin-bottom:3px}
+.stat-value{font-family:'Poppins';font-weight:700;font-size:1.22rem;letter-spacing:-.02em}
+.stat-note{font-size:.75rem;color:var(--ink-3);margin-top:2px}
+.pos{color:var(--green)} .neg{color:var(--rust)} .amb{color:var(--amber-dark)}
+html[data-theme="dark"] .amb{color:var(--amber)}
+
+/* ---------- Tables ---------- */
+.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{
+  background:var(--cream);font-weight:700;font-size:.74rem;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--ink-2);position:sticky;top:0
+}
+html[data-theme="dark"] thead th{background:#22222a}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:rgba(245,179,1,.06)}
+tfoot td{font-weight:700;background:var(--cream);border-top:2px solid var(--line)}
+html[data-theme="dark"] tfoot td{background:#22222a}
+.tag{font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:999px;letter-spacing:.03em}
+.tag.tax{background:rgba(226,88,43,.12);color:var(--rust)}
+.tag.exempt{background:rgba(27,138,90,.13);color:var(--green)}
+.tag.emp{background:rgba(245,179,1,.18);color:var(--amber-dark)}
+html[data-theme="dark"] .tag.emp{color:var(--amber)}
+.win{background:rgba(27,138,90,.12)!important;font-weight:700;color:var(--green)}
+.win::after{content:" ★";font-size:.7em}
+
+/* pinned first column on the comparison table for mobile */
+.pin-first th:first-child,.pin-first td:first-child{
+  position:sticky;left:0;background:var(--card);z-index:2;
+  box-shadow:1px 0 0 var(--line);min-width:190px
+}
+.pin-first thead th:first-child{background:var(--cream);z-index:3}
+html[data-theme="dark"] .pin-first thead th:first-child{background:#22222a}
+
+/* ---------- Charts ---------- */
+.chart-box{position:relative;height:340px}
+.chart-box.sm{height:260px}
+.chart-box.xs{height:230px}
+
+/* ---------- Misc ---------- */
+.notice{
+  border-left:3px solid var(--amber);background:rgba(245,179,1,.09);
+  padding:10px 14px;border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:.83rem;margin:10px 0
+}
+.notice.warn{border-left-color:var(--rust);background:rgba(226,88,43,.09)}
+.notice.good{border-left-color:var(--green);background:rgba(27,138,90,.09)}
+.divider{height:1px;background:var(--line);margin:16px 0}
+.muted{color:var(--ink-3)}
+.right{text-align:right}
+.center{text-align:center}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.spread{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;font-size:.87rem}
+.spread + .spread{border-top:1px dashed var(--line)}
+.spread b{font-weight:700}
+details.acc{border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;background:var(--card)}
+details.acc > summary{padding:12px 16px;cursor:pointer;font-family:'Poppins';font-weight:600;font-size:.92rem;list-style:none}
+details.acc > summary::-webkit-details-marker{display:none}
+details.acc > summary::before{content:"▸ ";color:var(--amber-dark);font-weight:700}
+details.acc[open] > summary::before{content:"▾ "}
+details.acc > div{padding:0 16px 16px}
+
+.empty{text-align:center;padding:34px 20px;color:var(--ink-3)}
+.empty svg{margin-bottom:10px}
+.empty h3{color:var(--charcoal)}
+
+/* Drop zone for offer PDFs */
+.dropzone{
+  margin-top:12px;border:2px dashed var(--line);border-radius:var(--r);
+  padding:20px;text-align:center;transition:.15s;background:rgba(245,179,1,.03)
+}
+.dropzone.over{border-color:var(--amber);background:rgba(245,179,1,.12)}
+.dropzone svg{margin-bottom:6px}
+.linklike{
+  background:none;border:none;padding:0;font:inherit;color:var(--amber-dark);
+  font-weight:700;cursor:pointer;text-decoration:underline
+}
+html[data-theme="dark"] .linklike{color:var(--amber)}
+.imp-card{border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px;background:var(--card)}
+.imp-file{font-size:.74rem;color:var(--ink-3);font-family:'IBM Plex Mono',monospace;word-break:break-all}
+.imp-miss{font-size:.78rem;color:var(--rust);font-weight:600;margin-top:6px}
+
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(14,14,16,.55);backdrop-filter:blur(3px);z-index:100;display:none;padding:24px;overflow-y:auto}
+.modal-bg.open{display:block}
+.modal{background:var(--card);border-radius:var(--r);max-width:860px;margin:0 auto;padding:22px;box-shadow:var(--shadow-lg)}
+
+.toast{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(140%);
+  background:var(--charcoal);color:var(--cream);padding:11px 20px;border-radius:999px;
+  font-size:.86rem;font-weight:600;z-index:200;transition:transform .3s cubic-bezier(.2,.9,.3,1);box-shadow:var(--shadow-lg)
+}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+footer.app{border-top:1px solid var(--line);margin-top:30px;padding:20px 0 40px;font-size:.8rem;color:var(--ink-3)}
+.disclaimer{
+  background:var(--card);border:1px dashed var(--line);border-radius:var(--r);
+  padding:13px 16px;font-size:.8rem;color:var(--ink-2);margin:16px 0
+}
+
+/* offer column colours (up to 4) */
+.oc1{color:#0E7C86}.oc2{color:#C25E00}.oc3{color:#6C4BB6}.oc4{color:#B03060}
+
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- Print / Save as PDF ---------- */
+@media print{
+  @page{margin:14mm}
+  body{background:#fff;font-size:11px}
+  header.app,.tabs,.no-print,.btn,footer.app nav{display:none!important}
+  .card{break-inside:avoid;box-shadow:none;border:1px solid #ccc;margin-bottom:10px}
+  .hero{background:#fff;color:#000;border:2px solid #000;box-shadow:none}
+  .hero-amount{color:#000}
+  .hero-label,.hero-sub,.hero-gap{color:#333}
+  .chart-box{height:250px}
+  .tbl-scroll{overflow:visible}
+  .disclaimer{border:1px solid #999}
+  .module{display:block!important}
+  #tab-compare.module:not(.active){display:none!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ============================ HEADER ============================ -->
+<header class="app">
+  <div class="wrap hdr-row">
+    <div class="logo">
+      <span class="lens">🔍</span>
+      <span>SalaryLens<small>CTC Decoder &amp; Offer Comparator</small></span>
+    </div>
+    <div class="hdr-spacer"></div>
+    <span class="fy-chip" id="fyChip">FY 2025-26</span>
+    <button class="btn ghost sm no-print" id="btnReset">↺ Reset</button>
+    <button class="btn ghost sm no-print" id="btnSettings">⚙️ Settings</button>
+    <button class="btn ghost sm no-print" id="btnTheme" title="Toggle dark mode">🌙</button>
+    <button class="btn ghost sm no-print" onclick="window.print()">🖨️ Print / PDF</button>
+  </div>
+  <div class="wrap tabs no-print">
+    <button class="tab active" data-tab="decode">Ⅰ · CTC Decoder</button>
+    <button class="tab" data-tab="compare">Ⅱ · Offer Comparator</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="privacy-bar">🔒 Your salary details stay on this computer. Nothing is uploaded. Safe to use anywhere.</div>
+  <div class="fy-note" id="fyNote">Financial year <b>FY 2025-26</b> (April–March). Slabs and limits are seeded from published rules. Verify against incometax.gov.in or your payroll team before making decisions.</div>
+</div>
+
+<!-- ============================ MODULE 1 : DECODER ============================ -->
+<main class="wrap module active" id="tab-decode">
+<div class="split">
+
+  <!-- ---------- LEFT : INPUTS ---------- -->
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Your offer</h2></div>
+      <div class="chips no-print" style="margin-bottom:10px">
+        <button class="chip active" id="modeA">I only know the CTC</button>
+        <button class="chip" id="modeB">I have the breakup</button>
+      </div>
+      <button class="btn ghost sm no-print" id="btnImportOne" style="width:100%;justify-content:center;margin-bottom:14px">📄 Read it from an offer letter PDF</button>
+
+      <!-- MODE A -->
+      <div id="paneA">
+        <label class="fld"><span class="lbl">Annual CTC (₹)</span>
+          <input type="number" id="i_ctc" value="1800000" min="0" step="10000">
+          <div class="err" id="e_ctc"></div>
+          <div class="hint" id="ctcWords">₹18.00 L per year</div>
+        </label>
+        <div class="grid g2" style="gap:0 12px">
+          <label class="fld"><span class="lbl">Work city (HRA + cost of living)</span>
+            <select id="i_city"></select>
+          </label>
+          <label class="fld"><span class="lbl">State (professional tax)</span>
+            <select id="i_state"></select>
+          </label>
+        </div>
+
+        <label class="fld">
+          <div class="range-row"><span class="lbl">Basic salary — % of CTC</span><span class="range-val" id="v_basic">40%</span></div>
+          <input type="range" id="i_basicPct" min="30" max="60" step="1" value="40">
+          <div class="hint">Higher basic → more PF and gratuity, less cash in hand.</div>
+        </label>
+
+        <label class="fld">
+          <div class="range-row"><span class="lbl">HRA — % of Basic</span><span class="range-val" id="v_hra">50%</span></div>
+          <input type="range" id="i_hraPct" min="0" max="60" step="1" value="50">
+        </label>
+
+        <label class="fld">
+          <div class="range-row"><span class="lbl">Variable pay / bonus — % of CTC</span><span class="range-val" id="v_var">0%</span></div>
+          <input type="range" id="i_varPct" min="0" max="40" step="1" value="0">
+        </label>
+
+        <label class="fld">
+          <div class="range-row"><span class="lbl">Realistic variable payout</span><span class="range-val" id="v_payout">100%</span></div>
+          <input type="range" id="i_payoutPct" min="0" max="150" step="5" value="100">
+          <div class="hint">Companies rarely pay 100%. Use what people actually received.</div>
+        </label>
+
+        <details class="acc" open><summary>Allowances in the structure</summary><div id="allowBox"></div></details>
+
+        <details class="acc"><summary>Employer-side contributions</summary><div>
+          <label class="switch"><input type="checkbox" id="i_pfCeiling"> Cap PF at the ₹15,000 statutory wage ceiling</label>
+          <label class="switch"><input type="checkbox" id="i_gratuityProv" checked> Gratuity provision sits inside CTC (4.81% of Basic)</label>
+          <label class="fld"><div class="range-row"><span class="lbl">Employer NPS — % of Basic (80CCD(2))</span><span class="range-val" id="v_nps">0%</span></div>
+            <input type="range" id="i_npsPct" min="0" max="14" step="1" value="0"></label>
+          <label class="fld"><span class="lbl">Group medical insurance premium in CTC (₹ / year)</span>
+            <input type="number" id="i_insurance" value="12000" min="0" step="1000"></label>
+        </div></details>
+      </div>
+
+      <!-- MODE B -->
+      <div id="paneB" style="display:none">
+        <label class="fld"><span class="lbl">Annual CTC as stated on the offer letter (₹)</span>
+          <input type="number" id="i_ctcB" value="1800000" min="0" step="10000">
+        </label>
+        <div class="grid g2" style="gap:0 12px">
+          <label class="fld"><span class="lbl">Work city</span><select id="i_cityB"></select></label>
+          <label class="fld"><span class="lbl">State</span><select id="i_stateB"></select></label>
+        </div>
+        <div class="hint" style="margin-bottom:8px">Enter each line exactly as printed on your offer letter. Annual figures.</div>
+        <div class="tbl-scroll" style="margin-bottom:10px"><table id="manualTable">
+          <thead><tr><th>Component</th><th>Annual ₹</th><th>Treatment</th><th></th></tr></thead>
+          <tbody id="manualBody"></tbody>
+        </table></div>
+        <div class="row">
+          <button class="btn ghost sm" id="btnAddComp">＋ Add custom component</button>
+          <button class="btn ghost sm" id="btnAutoAdjust">Auto-adjust Special Allowance</button>
+        </div>
+        <div id="sumCheck" class="notice" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Tax inputs</h3></div>
+      <label class="fld"><span class="lbl">Monthly rent you pay (₹) — for HRA exemption</span>
+        <input type="number" id="i_rent" value="0" min="0" step="1000">
+        <div class="err" id="e_rent"></div>
+      </label>
+      <div class="grid g2" style="gap:0 12px">
+        <label class="fld"><span class="lbl">Other 80C (ELSS, LIC, tuition…)</span><input type="number" id="i_80c" value="0" min="0" step="5000"></label>
+        <label class="fld"><span class="lbl">80D — health premium paid</span><input type="number" id="i_80d" value="0" min="0" step="5000"></label>
+        <label class="fld"><span class="lbl">80CCD(1B) — own NPS</span><input type="number" id="i_80ccd1b" value="0" min="0" step="5000"></label>
+        <label class="fld"><span class="lbl">Home loan interest — 24(b)</span><input type="number" id="i_hloan" value="0" min="0" step="10000"></label>
+      </div>
+      <label class="fld"><span class="lbl">Tax regime</span>
+        <select id="i_regime">
+          <option value="auto">Pick the better one automatically</option>
+          <option value="new">New regime</option>
+          <option value="old">Old regime</option>
+        </select>
+      </label>
+      <div class="hint">Old-regime deductions above are ignored under the new regime, where only the standard deduction and employer NPS apply.</div>
+    </div>
+
+    <div class="card no-print">
+      <div class="card-head"><h3>Presets</h3></div>
+      <div class="row">
+        <button class="btn ghost sm" id="btnMaxInhand">💵 Maximise my in-hand</button>
+        <button class="btn ghost sm" id="btnMaxSave">🏦 Maximise my savings</button>
+      </div>
+      <div class="hint" style="margin-top:8px">Both keep the same CTC. They only change how it is structured.</div>
+      <div class="divider"></div>
+      <button class="btn primary" id="btnSendToCompare" style="width:100%">Send this offer to the Comparator →</button>
+    </div>
+  </div>
+
+  <!-- ---------- RIGHT : RESULTS ---------- -->
+  <div>
+    <div class="hero">
+      <div class="hero-label">Your monthly in-hand</div>
+      <div class="hero-amount" id="heroInhand">₹0</div>
+      <div class="hero-sub" id="heroAnnual">₹0 per year lands in your bank account</div>
+      <div class="hero-pills">
+        <div class="hero-pill"><div class="k">Monthly gross</div><div class="v num" id="pillGross">₹0</div></div>
+        <div class="hero-pill"><div class="k">Regime applied</div><div class="v" id="pillRegime">—</div></div>
+        <div class="hero-pill"><div class="k">Monthly TDS</div><div class="v num" id="pillTds">₹0</div></div>
+        <div class="hero-pill"><div class="k">Employee PF</div><div class="v num" id="pillPf">₹0</div></div>
+      </div>
+      <div class="hero-gap" id="heroGap"></div>
+    </div>
+
+    <div id="warnBox"></div>
+
+    <div class="card">
+      <div class="card-head"><h2>CTC → bank account, step by step</h2></div>
+      <div class="chart-box"><canvas id="chartWaterfall"></canvas></div>
+      <div class="divider"></div>
+      <div class="grid g2">
+        <div id="wfSteps"></div>
+        <div id="wfSteps2"></div>
+      </div>
+    </div>
+
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="stat"><div class="stat-label">Annual in-hand</div><div class="stat-value num" id="s_inhand">₹0</div><div class="stat-note" id="s_inhandL"></div></div>
+      <div class="stat"><div class="stat-label">Total annual tax</div><div class="stat-value num neg" id="s_tax">₹0</div><div class="stat-note" id="s_taxRate"></div></div>
+      <div class="stat"><div class="stat-label">Retirement corpus added</div><div class="stat-value num pos" id="s_retire">₹0</div><div class="stat-note">PF (you + employer) + NPS this year</div></div>
+      <div class="stat"><div class="stat-label">CTC you actually keep</div><div class="stat-value num amb" id="s_pct">0%</div><div class="stat-note" id="s_pctNote"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Old regime vs new regime</h2></div>
+      <div class="grid g2" id="regimeCards"></div>
+      <div id="regimeVerdict" class="notice good" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Component breakdown</h2><span class="muted" style="font-size:.8rem">Monthly and annual</span></div>
+      <div class="tbl-scroll"><table id="compTable">
+        <thead><tr><th>Component</th><th>Monthly</th><th>Annual</th><th>Treatment</th></tr></thead>
+        <tbody id="compBody"></tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Month by month, FY <span id="fyInline">2025-26</span></h2></div>
+      <div class="hint" style="margin-top:-8px;margin-bottom:10px">Professional tax often differs in one month of the year, and variable pay lands in a single month, so no two months are identical.</div>
+      <div class="tbl-scroll"><table>
+        <thead><tr><th>Month</th><th>Gross</th><th>PF</th><th>PT</th><th>TDS</th><th>Other</th><th>In-hand</th></tr></thead>
+        <tbody id="monthBody"></tbody>
+        <tfoot id="monthFoot"></tfoot>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>⚖️ Structure optimiser</h2></div>
+      <p class="muted" style="font-size:.86rem">The same CTC can pay you very differently. Move the basic slider on the left and watch both sides of the trade-off move at once.</p>
+      <div class="chart-box sm"><canvas id="chartBasic"></canvas></div>
+      <div class="divider"></div>
+      <div class="grid g3">
+        <div class="stat"><div class="stat-label">At 30% basic</div><div class="stat-value num" id="ob_low"></div><div class="stat-note" id="ob_lowR"></div></div>
+        <div class="stat"><div class="stat-label">At your setting</div><div class="stat-value num amb" id="ob_cur"></div><div class="stat-note" id="ob_curR"></div></div>
+        <div class="stat"><div class="stat-label">At 60% basic</div><div class="stat-value num" id="ob_high"></div><div class="stat-note" id="ob_highR"></div></div>
+      </div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-head"><h3>🏠 HRA optimiser</h3></div>
+        <div id="hraOut"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>🏦 PF ceiling choice</h3></div>
+        <div id="pfCeilOut"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>📈 Employer NPS under 80CCD(2)</h3></div>
+      <div id="npsOut"></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-head"><h3>🎁 Gratuity calculator</h3></div>
+        <label class="fld"><span class="lbl">Years you expect to stay</span><input type="number" id="i_gratYears" value="5" min="0" max="45" step="0.5"></label>
+        <div id="gratOut"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>🌱 PF corpus projector</h3></div>
+        <div class="grid g2" style="gap:0 12px">
+          <label class="fld"><span class="lbl">Your age today</span><input type="number" id="i_age" value="30" min="18" max="59"></label>
+          <label class="fld"><span class="lbl">Retire at</span><input type="number" id="i_retAge" value="58" min="40" max="70"></label>
+          <label class="fld"><span class="lbl">Annual salary growth %</span><input type="number" id="i_growth" value="8" min="0" max="30" step="0.5"></label>
+          <label class="fld"><span class="lbl">EPF interest %</span><input type="number" id="i_epfRate" value="8.25" min="0" max="15" step="0.05"></label>
+        </div>
+        <div id="pfProjOut"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>🎯 Hike &amp; reverse calculator</h2></div>
+      <div class="grid g2">
+        <div>
+          <label class="fld"><div class="range-row"><span class="lbl">Hike on your CTC</span><span class="range-val" id="v_hike">20%</span></div>
+            <input type="range" id="i_hike" min="0" max="150" step="1" value="20"></label>
+          <div id="hikeOut"></div>
+        </div>
+        <div>
+          <label class="fld"><span class="lbl">I want this much in hand every month (₹)</span>
+            <input type="number" id="i_targetInhand" value="150000" min="0" step="5000"></label>
+          <div id="reverseOut"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="disclaimer" id="disc1"></div>
+  </div>
+</div>
+</main>
+
+<!-- ============================ MODULE 2 : COMPARATOR ============================ -->
+<main class="wrap module" id="tab-compare" style="display:none">
+
+  <div class="card no-print">
+    <div class="card-head">
+      <h2>Offers on the table</h2>
+      <div class="row">
+        <button class="btn primary sm" id="btnImport">📄 Read offers from PDF</button>
+        <button class="btn ghost sm" id="btnAddOffer">＋ Add an offer</button>
+        <button class="btn ghost sm" id="btnSaveSet">💾 Save this comparison</button>
+        <button class="btn ghost sm" id="btnExcel">📊 Export to Excel</button>
+        <button class="btn ghost sm" onclick="window.print()">🖨️ Print / PDF</button>
+      </div>
+    </div>
+    <div class="hint">Compare 2 to 4 offers. Every figure below runs through the same engine as the Decoder.</div>
+    <div class="dropzone" id="dropzone">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <rect x="7" y="4" width="20" height="26" rx="3" fill="var(--card)" stroke="var(--ink-3)" stroke-width="1.8"/>
+        <path d="M12 12h10M12 17h10M12 22h6" stroke="var(--ink-3)" stroke-width="1.6" stroke-linecap="round"/>
+        <circle cx="28" cy="27" r="9" fill="var(--amber)"/>
+        <path d="M28 31v-8M24.5 26.5L28 23l3.5 3.5" stroke="#0E0E10" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div><b>Drop your offer letters here</b>, or <button class="linklike" id="dzPick">choose files</button></div>
+      <div class="hint">Up to four PDFs at once. They are read inside this browser tab and never uploaded.</div>
+    </div>
+    <input type="file" id="pdfInput" accept="application/pdf,.pdf" multiple style="display:none">
+  </div>
+
+  <div id="offerCards" class="grid g2"></div>
+
+  <div class="card no-print">
+    <div class="card-head"><h2>⚖️ What matters to you</h2></div>
+    <div class="notice">Set the weights first. The weights matter more than the ratings — this is where you decide what you are actually optimising for. 0 means "irrelevant to me", 10 means "this decides it".</div>
+    <div class="grid g2" id="weightBox"></div>
+  </div>
+
+  <div class="card no-print">
+    <div class="card-head"><h3>Cost of living &amp; hours</h3></div>
+    <div class="grid g3">
+      <label class="fld"><span class="lbl">Normalise purchasing power against</span><select id="i_baseCity"></select></label>
+      <label class="fld"><span class="lbl">Working days per year</span><input type="number" id="i_workDays" value="240" min="100" max="330"></label>
+      <label class="fld"><span class="lbl">Equity discount for unlisted stock (%)</span><input type="number" id="i_eqDiscount" value="60" min="0" max="100"></label>
+    </div>
+  </div>
+
+  <div id="cmpResults"></div>
+
+  <div class="card">
+    <div class="card-head"><h2>💾 Saved comparisons</h2></div>
+    <div id="historyBox"></div>
+  </div>
+
+  <div class="disclaimer" id="disc2"></div>
+</main>
+
+<!-- ============================ SETTINGS MODAL ============================ -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal">
+    <div class="card-head">
+      <h2>⚙️ Rules &amp; rates</h2>
+      <button class="btn ghost sm" id="btnCloseSettings">Close</button>
+    </div>
+    <p class="muted" style="font-size:.85rem">Everything the app calculates with lives here. Budgets and state notifications change these numbers — edit them yourself when they do. Changes are saved to this browser only.</p>
+
+    <h3 style="margin-top:16px">Quick edits</h3>
+    <div class="grid g3" id="quickSettings"></div>
+
+    <div class="divider"></div>
+    <h3>Cost-of-living index <span class="muted" style="font-weight:400;font-size:.8rem">— an estimate, not a fact. Mumbai = 100.</span></h3>
+    <div class="grid g4" id="colSettings"></div>
+
+    <div class="divider"></div>
+    <h3>Professional tax by state <span class="muted" style="font-weight:400;font-size:.8rem">— monthly ₹ at your salary level</span></h3>
+    <div class="grid g4" id="ptSettings"></div>
+
+    <div class="divider"></div>
+    <h3>Full configuration</h3>
+    <p class="muted" style="font-size:.82rem">Tax slabs, surcharge tiers, PF rules and gratuity constants, as editable JSON. Fix any red message before applying.</p>
+    <div class="chips" id="cfgTabs" style="margin-bottom:8px"></div>
+    <textarea id="cfgArea" rows="16" spellcheck="false"></textarea>
+    <div class="err" id="cfgErr"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="btnApplyCfg">Apply changes</button>
+      <button class="btn ghost" id="btnResetCfg">Reset to defaults</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ IMPORT REVIEW MODAL ============================ -->
+<div class="modal-bg" id="importModal">
+  <div class="modal">
+    <div class="card-head">
+      <h2>📄 What the offer letters say</h2>
+      <button class="btn ghost sm" id="btnCloseImport">Cancel</button>
+    </div>
+    <div id="importStatus"></div>
+    <div id="importBody"></div>
+    <div class="row" id="importActions" style="margin-top:14px;display:none">
+      <button class="btn primary" id="btnApplyImport">Use these offers</button>
+      <button class="btn ghost" id="btnCloseImport2">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ RESET MODAL ============================ -->
+<div class="modal-bg" id="resetModal">
+  <div class="modal" style="max-width:520px">
+    <div class="card-head"><h2>↺ Start over</h2></div>
+    <p>Clear what you have typed and put every field back to its opening value.</p>
+    <div class="notice">Your saved comparisons are kept unless you choose the second option.</div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn primary" id="btnResetForm">Clear the form</button>
+      <button class="btn danger" id="btnResetAll">Clear the form and delete saved comparisons</button>
+      <button class="btn ghost" id="btnResetCancel">Keep my work</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<footer class="app"><div class="wrap">
+  <div class="disclaimer" id="disc3"></div>
+  SalaryLens runs entirely in this browser tab. Nothing you type here leaves this computer.
+</div></footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+"use strict";
+/* ==================================================================
+   ██  CONFIGURATION  ██
+   ------------------------------------------------------------------
+   Every tax slab, rate, threshold and limit used anywhere in this app
+   is declared in the five objects below. Nothing is hard-coded further
+   down. When a Budget or a state notification changes something, edit
+   it here (or in the Settings panel, which writes to these objects).
+   ================================================================== */
+
+/* ---- 1. INCOME TAX -------------------------------------------------
+   Slabs are inclusive-from / exclusive-to. `to: null` means "and above".
+   Rates are decimals: 0.05 = 5%.
+   Seeded for FY 2025-26 (AY 2026-27).
+-------------------------------------------------------------------- */
+const DEFAULT_TAX_CONFIG = {
+  financialYear: "2025-26",
+  cess: 0.04,                       // Health & Education cess on (tax + surcharge)
+  regimes: {
+    new: {
+      label: "New regime",
+      standardDeduction: 75000,
+      // Section 87A: full rebate if taxable income is at or below `limit`
+      rebate: { limit: 1200000, max: 60000, marginalRelief: true },
+      slabs: [
+        { from: 0,       to: 400000,  rate: 0.00 },
+        { from: 400000,  to: 800000,  rate: 0.05 },
+        { from: 800000,  to: 1200000, rate: 0.10 },
+        { from: 1200000, to: 1600000, rate: 0.15 },
+        { from: 1600000, to: 2000000, rate: 0.20 },
+        { from: 2000000, to: 2400000, rate: 0.25 },
+        { from: 2400000, to: null,    rate: 0.30 }
+      ],
+      // Surcharge on the tax amount once total income crosses each level
+      surcharge: [
+        { above: 5000000,  rate: 0.10 },
+        { above: 10000000, rate: 0.15 },
+        { above: 20000000, rate: 0.25 }
+      ],
+      allowsExemptions: false,       // no HRA / LTA / 80C under the new regime
+      allows80CCD2: true,            // employer NPS is still deductible
+      ccd2Pct: 0.14                  // 80CCD(2) ceiling: 14% of Basic in the new regime
+    },
+    old: {
+      label: "Old regime",
+      standardDeduction: 50000,
+      rebate: { limit: 500000, max: 12500, marginalRelief: false },
+      slabs: [
+        { from: 0,       to: 250000,  rate: 0.00 },
+        { from: 250000,  to: 500000,  rate: 0.05 },
+        { from: 500000,  to: 1000000, rate: 0.20 },
+        { from: 1000000, to: null,    rate: 0.30 }
+      ],
+      surcharge: [
+        { above: 5000000,  rate: 0.10 },
+        { above: 10000000, rate: 0.15 },
+        { above: 20000000, rate: 0.25 },
+        { above: 50000000, rate: 0.37 }
+      ],
+      allowsExemptions: true,
+      allows80CCD2: true,
+      ccd2Pct: 0.10                  // 80CCD(2) ceiling: 10% of Basic in the old regime
+    }
+  },
+  // Chapter VI-A ceilings used by the old regime
+  limits: {
+    sec80C: 150000,
+    sec80D: 100000,
+    sec80CCD1B: 50000,
+    homeLoanInterest: 200000,
+    sec80CCD2PctOfBasic: 0.10       // 10% of basic for private employees
+  }
+};
+
+/* ---- 2. PROVIDENT FUND --------------------------------------------
+   Employee and employer both contribute 12% of (Basic + DA).
+   The employer's 12% splits into EPS (pension) and EPF.
+   The ₹15,000 wage ceiling is optional — many employers contribute on
+   full basic instead, which is why `applyCeiling` is a user choice.
+-------------------------------------------------------------------- */
+const DEFAULT_PF_CONFIG = {
+  employeeRate: 0.12,
+  employerRate: 0.12,
+  epsRate: 0.0833,            // out of the employer's 12%
+  epsWageCeiling: 15000,      // EPS is always capped at this monthly wage
+  wageCeiling: 15000,         // monthly Basic+DA ceiling if applied
+  applyCeilingDefault: false,
+  adminChargesRate: 0.005,    // employer-borne, sits inside CTC
+  interestRate: 0.0825,       // EPF declared interest, used by the projector
+  esi: {
+    enabled: true,
+    grossMonthlyLimit: 21000, // ESI applies only below this monthly gross
+    employeeRate: 0.0075,
+    employerRate: 0.0325
+  },
+  labourWelfareFundAnnual: 0  // small state levy; set it if yours deducts one
+};
+
+/* ---- 3. PROFESSIONAL TAX (a STATE levy — differs everywhere) --------
+   `slabs` are monthly gross thresholds with the monthly ₹ amount.
+   `extraLastMonth` is the extra rupees added in February in states that
+   collect ₹2,500 a year in eleven ₹200 instalments plus one ₹300.
+-------------------------------------------------------------------- */
+const DEFAULT_PT_CONFIG = {
+  "Maharashtra":     { annualCap:2500, extraLastMonth:100, slabs:[{upto:7500,amt:0},{upto:10000,amt:175},{upto:null,amt:200}] },
+  "Karnataka":       { annualCap:2400, extraLastMonth:0,   slabs:[{upto:24999,amt:0},{upto:null,amt:200}] },
+  "West Bengal":     { annualCap:2400, extraLastMonth:0,   slabs:[{upto:10000,amt:0},{upto:15000,amt:110},{upto:25000,amt:130},{upto:40000,amt:150},{upto:null,amt:200}] },
+  "Tamil Nadu":      { annualCap:2500, extraLastMonth:0,   slabs:[{upto:21000,amt:0},{upto:30000,amt:23},{upto:45000,amt:53},{upto:60000,amt:115},{upto:75000,amt:171},{upto:null,amt:208}] },
+  "Telangana":       { annualCap:2400, extraLastMonth:0,   slabs:[{upto:15000,amt:0},{upto:20000,amt:150},{upto:null,amt:200}] },
+  "Andhra Pradesh":  { annualCap:2400, extraLastMonth:0,   slabs:[{upto:15000,amt:0},{upto:20000,amt:150},{upto:null,amt:200}] },
+  "Gujarat":         { annualCap:2400, extraLastMonth:0,   slabs:[{upto:12000,amt:0},{upto:null,amt:200}] },
+  "Madhya Pradesh":  { annualCap:2500, extraLastMonth:4,   slabs:[{upto:18750,amt:0},{upto:25000,amt:125},{upto:33333,amt:167},{upto:null,amt:208}] },
+  "Delhi":           { annualCap:0, extraLastMonth:0, slabs:[{upto:null,amt:0}] },
+  "Haryana":         { annualCap:0, extraLastMonth:0, slabs:[{upto:null,amt:0}] },
+  "Uttar Pradesh":   { annualCap:0, extraLastMonth:0, slabs:[{upto:null,amt:0}] },
+  "Rajasthan":       { annualCap:0, extraLastMonth:0, slabs:[{upto:null,amt:0}] },
+  "Punjab":          { annualCap:0, extraLastMonth:0, slabs:[{upto:null,amt:0}] },
+  "Other / none":    { annualCap:0, extraLastMonth:0, slabs:[{upto:null,amt:0}] }
+};
+
+/* ---- 4. CITIES -----------------------------------------------------
+   `metro` drives the 50% vs 40% HRA exemption limit (income-tax metros
+   are only Mumbai, Delhi, Kolkata and Chennai).
+   `col` is a cost-of-living index with Mumbai = 100. It is an estimate.
+-------------------------------------------------------------------- */
+const DEFAULT_CITY_CONFIG = {
+  "Mumbai":       { metro:true,  col:100, state:"Maharashtra" },
+  "Delhi NCR":    { metro:true,  col:92,  state:"Delhi" },
+  "Bengaluru":    { metro:false, col:88,  state:"Karnataka" },
+  "Pune":         { metro:false, col:78,  state:"Maharashtra" },
+  "Hyderabad":    { metro:false, col:72,  state:"Telangana" },
+  "Chennai":      { metro:true,  col:74,  state:"Tamil Nadu" },
+  "Kolkata":      { metro:true,  col:68,  state:"West Bengal" },
+  "Ahmedabad":    { metro:false, col:65,  state:"Gujarat" },
+  "Tier-2 city":  { metro:false, col:55,  state:"Other / none" }
+};
+
+/* ---- 5. GRATUITY ---------------------------------------------------
+   Statutory formula: last drawn (Basic + DA) x 15/26 x completed years.
+-------------------------------------------------------------------- */
+const DEFAULT_GRATUITY_CONFIG = {
+  daysPerYear: 15,
+  monthDays: 26,
+  eligibilityYears: 5,
+  exemptionCap: 2000000,     // lifetime tax-free limit
+  ctcProvisionRate: 0.0481   // 4.81% of Basic is what employers park in CTC
+};
+
+/* ---- 6. STANDARD ALLOWANCES ---------------------------------------
+   Defaults used when the app builds a structure from CTC alone.
+   `exemptOld` marks what the old regime treats as exempt (up to `cap`).
+-------------------------------------------------------------------- */
+const DEFAULT_ALLOWANCE_CONFIG = {
+  lta:        { label:"Leave Travel Allowance", annual:60000,  on:false, exemptOld:true,  cap:null },
+  conveyance: { label:"Conveyance Allowance",   annual:19200,  on:false, exemptOld:false, cap:0 },
+  food:       { label:"Food Coupons / Meal Card", annual:26400,on:false, exemptOld:true,  cap:26400 },
+  telecom:    { label:"Telephone & Internet",   annual:24000,  on:false, exemptOld:true,  cap:null },
+  fuel:       { label:"Fuel & Driver",          annual:32400,  on:false, exemptOld:true,  cap:39600 },
+  profdev:    { label:"Professional Development",annual:25000, on:false, exemptOld:true,  cap:null },
+  books:      { label:"Books & Periodicals",    annual:12000,  on:false, exemptOld:true,  cap:null }
+};
+
+/* Live working copies. Settings edits and localStorage overwrite these. */
+let TAX_CONFIG       = deepCopy(DEFAULT_TAX_CONFIG);
+let PF_CONFIG        = deepCopy(DEFAULT_PF_CONFIG);
+let PT_CONFIG        = deepCopy(DEFAULT_PT_CONFIG);
+let CITY_CONFIG      = deepCopy(DEFAULT_CITY_CONFIG);
+let GRATUITY_CONFIG  = deepCopy(DEFAULT_GRATUITY_CONFIG);
+let ALLOWANCE_CONFIG = deepCopy(DEFAULT_ALLOWANCE_CONFIG);
+
+/* Non-monetary factors scored in the Comparator. Order is the display order. */
+const FACTORS = [
+  { key:"role",     label:"Role & title" },
+  { key:"learning", label:"Learning & growth" },
+  { key:"brand",    label:"Company brand & stability" },
+  { key:"manager",  label:"Manager & team quality" },
+  { key:"wlb",      label:"Work-life balance & hours" },
+  { key:"remote",   label:"Remote / hybrid / office fit" },
+  { key:"commute",  label:"Commute (shorter is better)" },
+  { key:"security", label:"Job security" },
+  { key:"leave",    label:"Leave policy" },
+  { key:"travel",   label:"Travel requirement (less is better)" }
+];
+
+const MONTHS = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
+const LS = { offers:"salarylens.saved.v1", cfg:"salarylens.config.v1", theme:"salarylens.theme.v1", state:"salarylens.state.v1" };
+const DISCLAIMER = "These are estimates based on standard salary structures and published tax rules. Your actual payslip depends on your employer's specific structure, your declarations, and your state. Confirm with the employer's HR or payroll team, and with a qualified tax adviser, before making a career or financial decision.";
+
+function deepCopy(o){ return JSON.parse(JSON.stringify(o)); }
+
+/* ==================================================================
+   ██  FORMATTING  ██
+   Indian digit grouping is 2-2-3 from the right, not 3-3-3.
+   ₹12,45,678 — never ₹1,245,678. Written by hand, not Intl, so the
+   behaviour is identical in every browser and offline.
+   ================================================================== */
+function groupIndian(intStr){
+  if (intStr.length <= 3) return intStr;
+  const last3 = intStr.slice(-3);
+  let rest = intStr.slice(0, -3);
+  const parts = [];
+  while (rest.length > 2){ parts.unshift(rest.slice(-2)); rest = rest.slice(0, -2); }
+  if (rest.length) parts.unshift(rest);
+  return parts.join(",") + "," + last3;
+}
+/** Format a number as Indian rupees. Never returns NaN or Infinity. */
+function inr(n, decimals){
+  n = safe(n);
+  const d = decimals || 0;
+  const neg = n < 0;
+  const fixed = Math.abs(n).toFixed(d);
+  const [i, f] = fixed.split(".");
+  return (neg ? "-₹" : "₹") + groupIndian(i) + (f ? "." + f : "");
+}
+/** Short form for big numbers: ₹24.50 L, ₹1.20 Cr */
+function inrShort(n){
+  n = safe(n);
+  const a = Math.abs(n), s = n < 0 ? "-₹" : "₹";
+  if (a >= 1e7) return s + (a/1e7).toFixed(2) + " Cr";
+  if (a >= 1e5) return s + (a/1e5).toFixed(2) + " L";
+  return inr(n);
+}
+function pct(n, d){ return safe(n).toFixed(d === undefined ? 1 : d) + "%"; }
+/** Any non-finite value becomes 0 so the UI can never print NaN. */
+function safe(n){ const x = typeof n === "number" ? n : parseFloat(n); return Number.isFinite(x) ? x : 0; }
+function num(el, def){ const v = parseFloat(document.getElementById(el).value); return Number.isFinite(v) ? v : (def || 0); }
+function $(id){ return document.getElementById(id); }
+function el(tag, cls, html){ const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; }
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function round(n){ return Math.round(safe(n)); }
+function clamp(n, lo, hi){ return Math.min(hi, Math.max(lo, safe(n))); }
+
+/* ==================================================================
+   ██  TAX ENGINE  ██
+   ================================================================== */
+
+/** Walk the slabs and add up the tax owed in each band. */
+function slabTax(income, slabs){
+  income = Math.max(0, safe(income));
+  let tax = 0;
+  for (const s of slabs){
+    if (income > s.from){
+      const upper = (s.to === null || s.to === undefined) ? income : Math.min(income, s.to);
+      tax += (upper - s.from) * s.rate;
+    }
+  }
+  return tax;
+}
+
+/**
+ * Income tax for one regime, on an already-computed taxable income.
+ * Order of operations, which matters:
+ *   slab tax → 87A rebate (+ marginal relief) → surcharge (+ marginal
+ *   relief) → 4% cess.
+ */
+function taxForRegime(taxableIncome, regimeKey){
+  const R = TAX_CONFIG.regimes[regimeKey];
+  const inc = Math.max(0, safe(taxableIncome));
+  let base = slabTax(inc, R.slabs);
+
+  // --- Section 87A rebate ---
+  if (inc <= R.rebate.limit){
+    base = Math.max(0, base - Math.min(base, R.rebate.max));
+  } else if (R.rebate.marginalRelief){
+    // Just above the rebate limit, tax cannot exceed the income above it.
+    // At ₹12,10,000 the slab tax is ₹61,500 but you only pay ₹10,000.
+    base = Math.min(base, inc - R.rebate.limit);
+  }
+
+  // --- Surcharge, with marginal relief at each threshold ---
+  let sur = 0, surRate = 0;
+  const tiers = R.surcharge || [];
+  let tier = null;
+  for (const t of tiers) if (inc > t.above) tier = t;
+  if (tier){
+    surRate = tier.rate;
+    sur = base * surRate;
+    // Marginal relief: the extra tax+surcharge from crossing the line can
+    // never exceed the extra income that crossed it.
+    const prev = tiers.filter(t => t.above < tier.above).pop();
+    const taxAtThreshold = slabTax(tier.above, R.slabs);
+    const surAtThreshold = prev ? taxAtThreshold * prev.rate : 0;
+    const excess = (base + sur) - (taxAtThreshold + surAtThreshold) - (inc - tier.above);
+    if (excess > 0) sur = Math.max(0, sur - excess);
+  }
+
+  const cess = (base + sur) * TAX_CONFIG.cess;
+  return {
+    taxable: inc, slabTax: base, surcharge: sur, surchargeRate: surRate,
+    cess: cess, total: Math.max(0, base + sur + cess)
+  };
+}
+
+/** Marginal rate on the next rupee — used to tax bonuses and equity. */
+function marginalRate(taxableIncome, regimeKey){
+  const a = taxForRegime(taxableIncome, regimeKey).total;
+  const b = taxForRegime(taxableIncome + 10000, regimeKey).total;
+  return clamp((b - a) / 10000, 0, 0.6);
+}
+
+/**
+ * HRA exemption — Section 10(13A). The exemption is the LEAST of three:
+ *   1. HRA actually received
+ *   2. Rent paid minus 10% of Basic
+ *   3. 50% of Basic in a metro, 40% elsewhere
+ * All three on an annual basis. Only available in the old regime.
+ */
+function hraExemption(hraReceived, annualRent, basic, isMetro){
+  const one   = Math.max(0, safe(hraReceived));
+  const two   = Math.max(0, safe(annualRent) - 0.10 * safe(basic));
+  const three = safe(basic) * (isMetro ? 0.50 : 0.40);
+  const exempt = Math.max(0, Math.min(one, two, three));
+  return { exempt, byHra: one, byRent: two, byBasicPct: three,
+           binding: exempt === 0 ? "none" : (exempt === one ? "hra" : (exempt === two ? "rent" : "basic")) };
+}
+
+/** Professional tax for one month, from the state's slab table. */
+function ptMonthly(state, monthlyGross){
+  const cfg = PT_CONFIG[state] || PT_CONFIG["Other / none"];
+  for (const s of cfg.slabs){
+    if (s.upto === null || s.upto === undefined || monthlyGross <= s.upto) return safe(s.amt);
+  }
+  return 0;
+}
+/** The full year of PT, honouring the February top-up and the annual cap. */
+function ptAnnual(state, monthlyGross){
+  const cfg = PT_CONFIG[state] || PT_CONFIG["Other / none"];
+  const m = ptMonthly(state, monthlyGross);
+  let total = m * 12 + (m > 0 ? safe(cfg.extraLastMonth) : 0);
+  if (cfg.annualCap > 0) total = Math.min(total, cfg.annualCap);
+  return total;
+}
+
+/* ==================================================================
+   ██  STRUCTURE BUILDER  ██
+   Turns a bare CTC number into a realistic Indian salary structure.
+   ================================================================== */
+function buildStructure(inp){
+  const ctc   = Math.max(0, safe(inp.ctc));
+  const basic = ctc * clamp(inp.basicPct, 0, 100) / 100;
+  const hra   = basic * clamp(inp.hraPct, 0, 100) / 100;
+  const comps = [];
+
+  comps.push({ key:"basic", name:"Basic Salary", annual:basic, side:"employee", treat:"taxable" });
+  if (hra > 0) comps.push({ key:"hra", name:"House Rent Allowance", annual:hra, side:"employee", treat:"taxable" });
+
+  // Optional allowances the user switched on
+  let allowTotal = 0;
+  for (const k in ALLOWANCE_CONFIG){
+    const cfgA = ALLOWANCE_CONFIG[k];
+    const userA = (inp.allowances && inp.allowances[k]) || {};
+    const on = userA.on !== undefined ? userA.on : cfgA.on;
+    const amt = Math.max(0, safe(userA.annual !== undefined ? userA.annual : cfgA.annual));
+    if (on && amt > 0){
+      comps.push({ key:k, name:cfgA.label, annual:amt, side:"employee",
+                   treat: cfgA.exemptOld ? "exemptOld" : "taxable", exemptCap: cfgA.cap });
+      allowTotal += amt;
+    }
+  }
+
+  const variable = ctc * clamp(inp.varPct, 0, 100) / 100;
+
+  // ---- Employer-side items. These sit inside CTC but never reach the bank.
+  const pfWageMonthly = inp.pfCeiling ? Math.min(basic/12, PF_CONFIG.wageCeiling) : basic/12;
+  const erPF   = pfWageMonthly * PF_CONFIG.employerRate * 12;
+  const pfAdmin= pfWageMonthly * PF_CONFIG.adminChargesRate * 12;
+  const erNPS  = basic * clamp(inp.npsPct, 0, 100) / 100;
+  const grat   = inp.gratuityProv ? basic * GRATUITY_CONFIG.ctcProvisionRate : 0;
+  const ins    = Math.max(0, safe(inp.insurance));
+
+  /* ESI depends on gross, and gross depends on ESI, so settle it with a
+     couple of passes rather than pretending the loop does not exist. */
+  let esiEr = 0, special = 0, fixedGross = 0;
+  for (let i = 0; i < 3; i++){
+    const employerTotal = erPF + pfAdmin + erNPS + grat + ins + esiEr;
+    special = ctc - (basic + hra + allowTotal + variable + employerTotal);
+    fixedGross = basic + hra + allowTotal + Math.max(0, special);
+    const grossM = fixedGross / 12;
+    esiEr = (PF_CONFIG.esi.enabled && grossM <= PF_CONFIG.esi.grossMonthlyLimit)
+          ? fixedGross * PF_CONFIG.esi.employerRate : 0;
+  }
+
+  const shortfall = special < 0 ? -special : 0;   // the structure does not fit inside the CTC
+  if (special > 0) comps.push({ key:"special", name:"Special Allowance", annual:special, side:"employee", treat:"taxable" });
+  if (variable > 0) comps.push({ key:"variable", name:"Variable Pay / Performance Bonus", annual:variable, side:"employee", treat:"taxable" });
+
+  if (erPF > 0)   comps.push({ key:"erpf",  name:"Employer PF contribution", annual:erPF,  side:"employer", treat:"employer" });
+  if (pfAdmin > 0)comps.push({ key:"pfadm", name:"PF admin charges",         annual:pfAdmin,side:"employer", treat:"employer" });
+  if (erNPS > 0)  comps.push({ key:"ernps", name:"Employer NPS contribution",annual:erNPS, side:"employer", treat:"employer" });
+  if (grat > 0)   comps.push({ key:"grat",  name:"Gratuity provision",       annual:grat,  side:"employer", treat:"employer" });
+  if (ins > 0)    comps.push({ key:"ins",   name:"Group medical insurance",  annual:ins,   side:"employer", treat:"employer" });
+  if (esiEr > 0)  comps.push({ key:"esier", name:"ESI — employer share",     annual:esiEr, side:"employer", treat:"employer" });
+
+  return { comps, ctc, shortfall };
+}
+
+/* ==================================================================
+   ██  THE CORE WATERFALL : CTC  →  MONTHLY BANK CREDIT  ██
+   ------------------------------------------------------------------
+   Step 1  CTC  minus employer-side items (employer PF, employer NPS,
+           gratuity provision, insurance premium, PF admin, employer ESI)
+           = GROSS SALARY. These are real money, but they are the
+           employer's payments — they never appear on your payslip.
+   Step 2  Gross minus employee PF, professional tax, employee ESI and
+           any labour welfare fund = SALARY BEFORE TAX.
+   Step 3  Income tax under both regimes; the better one is applied and
+           divided by 12 for monthly TDS.
+   Step 4  Monthly in-hand = monthly gross − PF − PT − TDS − others.
+   ================================================================== */
+function decode(inp){
+  const built = inp.components
+      ? { comps: inp.components, ctc: safe(inp.ctc), shortfall: 0 }
+      : buildStructure(inp);
+  const comps = built.comps;
+  const ctc   = built.ctc;
+
+  const pick   = k => comps.filter(c => c.key === k).reduce((a,c) => a + safe(c.annual), 0);
+  const basic  = pick("basic");
+  const hra    = pick("hra");
+  const variableTarget = pick("variable");
+  const payoutPct = clamp(inp.payoutPct === undefined ? 100 : inp.payoutPct, 0, 300);
+  const variableExpected = variableTarget * payoutPct / 100;
+
+  const employerItems = comps.filter(c => c.side === "employer");
+  const employerTotal = employerItems.reduce((a,c) => a + safe(c.annual), 0);
+  const fixedEarnings = comps.filter(c => c.side === "employee" && c.key !== "variable");
+  const grossFixed    = fixedEarnings.reduce((a,c) => a + safe(c.annual), 0);
+  const grossMonthly  = grossFixed / 12;
+
+  // ---- STEP 2 : employee-side deductions -------------------------
+  const pfWageMonthly = inp.pfCeiling ? Math.min(basic/12, PF_CONFIG.wageCeiling) : basic/12;
+  const eePF = pfWageMonthly * PF_CONFIG.employeeRate * 12;
+  const erPF = pick("erpf");
+  const epsAnnual = Math.min(pfWageMonthly, PF_CONFIG.epsWageCeiling) * PF_CONFIG.epsRate * 12;
+  const erNPS = pick("ernps");
+  const esiApplies = PF_CONFIG.esi.enabled && grossMonthly <= PF_CONFIG.esi.grossMonthlyLimit;
+  const esiEe = esiApplies ? grossFixed * PF_CONFIG.esi.employeeRate : 0;
+  const state = inp.state || "Other / none";
+  const ptA   = ptAnnual(state, grossMonthly);
+  const lwf   = safe(PF_CONFIG.labourWelfareFundAnnual);
+  const preTax = grossFixed - eePF - ptA - esiEe - lwf;
+
+  // ---- STEP 3 : income tax, both regimes -------------------------
+  const isMetro = (CITY_CONFIG[inp.city] || {}).metro || false;
+  const annualRent = Math.max(0, safe(inp.rent)) * 12;
+  const hraEx = hraExemption(hra, annualRent, basic, isMetro);
+
+  // Old regime: strip exempt allowances out of gross, then Chapter VI-A.
+  let allowanceExempt = 0;
+  fixedEarnings.forEach(c => {
+    if (c.treat === "exemptOld"){
+      const cap = (c.exemptCap === null || c.exemptCap === undefined) ? c.annual : c.exemptCap;
+      allowanceExempt += Math.min(safe(c.annual), Math.max(0, safe(cap)));
+    }
+  });
+
+  const L = TAX_CONFIG.limits;
+  const d = inp.ded || {};
+  function oldTaxable(grossPart, varPart){
+    const gross = grossPart + varPart + erNPS;              // employer NPS is salary, then deducted below
+    const R = TAX_CONFIG.regimes.old;
+    const ded80C  = Math.min(L.sec80C, eePF + Math.max(0, safe(d.c80c)));
+    const ded80D  = Math.min(L.sec80D, Math.max(0, safe(d.d80d)));
+    const ded1B   = Math.min(L.sec80CCD1B, Math.max(0, safe(d.ccd1b)));
+    const dedLoan = Math.min(L.homeLoanInterest, Math.max(0, safe(d.hloan)));
+    const ded2    = Math.min(erNPS, basic * (R.ccd2Pct || L.sec80CCD2PctOfBasic));
+    const total   = R.standardDeduction + ded80C + ded80D + ded1B + dedLoan + ded2 + ptA;
+    return { taxable: Math.max(0, gross - hraEx.exempt - allowanceExempt - total),
+             breakup:{ std:R.standardDeduction, c80C:ded80C, c80D:ded80D, c1B:ded1B, loan:dedLoan, ccd2:ded2, pt:ptA, hra:hraEx.exempt, allow:allowanceExempt } };
+  }
+  function newTaxable(grossPart, varPart){
+    const R = TAX_CONFIG.regimes.new;
+    const gross = grossPart + varPart + erNPS;
+    const ded2  = Math.min(erNPS, basic * (R.ccd2Pct || 0.14));
+    return { taxable: Math.max(0, gross - R.standardDeduction - ded2),
+             breakup:{ std:R.standardDeduction, ccd2:ded2 } };
+  }
+
+  const oldFix = oldTaxable(grossFixed, 0), newFix = newTaxable(grossFixed, 0);
+  const oldAll = oldTaxable(grossFixed, variableExpected), newAll = newTaxable(grossFixed, variableExpected);
+
+  const taxOldFixed = taxForRegime(oldFix.taxable, "old");
+  const taxNewFixed = taxForRegime(newFix.taxable, "new");
+  const taxOldAll   = taxForRegime(oldAll.taxable, "old");
+  const taxNewAll   = taxForRegime(newAll.taxable, "new");
+
+  let regime = inp.regime || "auto";
+  if (regime === "auto") regime = taxNewAll.total <= taxOldAll.total ? "new" : "old";
+  const taxFixed = regime === "new" ? taxNewFixed : taxOldFixed;
+  const taxAll   = regime === "new" ? taxNewAll   : taxOldAll;
+  const taxOnVariable = Math.max(0, taxAll.total - taxFixed.total);
+  const mRate = marginalRate(regime === "new" ? newAll.taxable : oldAll.taxable, regime);
+
+  // ---- STEP 4 : monthly in-hand ----------------------------------
+  const monthlyTDS = taxFixed.total / 12;
+  const monthlyOther = (esiEe + lwf) / 12;
+  const ptMonthlyAmt = ptMonthly(state, grossMonthly);
+  const monthlyInhand = grossMonthly - eePF/12 - ptMonthlyAmt - monthlyTDS - monthlyOther;
+  const annualInhandFixed = grossFixed - eePF - ptA - esiEe - lwf - taxFixed.total;
+  const variableNet = variableExpected - taxOnVariable;
+
+  // ---- Month-by-month table --------------------------------------
+  const ptCfg = PT_CONFIG[state] || PT_CONFIG["Other / none"];
+  const months = [];
+  let ptRunning = 0;
+  for (let i = 0; i < 12; i++){
+    let ptm = ptMonthlyAmt;
+    if (i === 10 && ptm > 0) ptm += safe(ptCfg.extraLastMonth);          // February top-up
+    if (ptCfg.annualCap > 0 && ptRunning + ptm > ptCfg.annualCap) ptm = Math.max(0, ptCfg.annualCap - ptRunning);
+    ptRunning += ptm;
+    const isVarMonth = (i === 11 && variableExpected > 0);               // bonus assumed in March
+    const g   = grossMonthly + (isVarMonth ? variableExpected : 0);
+    const tds = monthlyTDS + (isVarMonth ? taxOnVariable : 0);
+    months.push({ m:MONTHS[i], gross:g, pf:eePF/12, pt:ptm, tds:tds, other:monthlyOther,
+                  inhand: g - eePF/12 - ptm - tds - monthlyOther });
+  }
+
+  // ---- Waterfall steps for the chart -----------------------------
+  const steps = [{ label:"CTC", value:ctc, type:"total" }];
+  if (variableTarget > 0) steps.push({ label:"Variable pay", value:-variableTarget, type:"minus", note:"paid separately, not monthly" });
+  employerItems.forEach(c => steps.push({ label:c.name.replace("contribution","").trim(), value:-safe(c.annual), type:"minus" }));
+  steps.push({ label:"Gross Salary", value:grossFixed, type:"total" });
+  steps.push({ label:"Employee PF", value:-eePF, type:"minus" });
+  if (ptA > 0) steps.push({ label:"Professional Tax", value:-ptA, type:"minus" });
+  if (esiEe > 0) steps.push({ label:"ESI (you)", value:-esiEe, type:"minus" });
+  if (lwf > 0) steps.push({ label:"Labour Welfare Fund", value:-lwf, type:"minus" });
+  steps.push({ label:"Salary before tax", value:preTax, type:"total" });
+  steps.push({ label:"Income tax", value:-taxFixed.total, type:"minus" });
+  steps.push({ label:"Annual in-hand", value:annualInhandFixed, type:"final" });
+
+  return {
+    ok:true, comps, ctc, basic, hra, variableTarget, variableExpected, variableNet,
+    employerItems, employerTotal, grossFixed, grossMonthly, preTax,
+    eePF, erPF, epsAnnual, erNPS, esiEe, esiApplies, ptA, ptMonthlyAmt, lwf,
+    hraEx, isMetro, allowanceExempt,
+    regime, regimeLabel: TAX_CONFIG.regimes[regime].label,
+    taxFixed, taxAll, taxOnVariable, marginal:mRate,
+    taxOldAll, taxNewAll, oldTaxable:oldAll.taxable, newTaxable:newAll.taxable,
+    oldBreakup:oldAll.breakup, newBreakup:newAll.breakup,
+    monthlyTDS, monthlyInhand, annualInhandFixed, months, steps,
+    retirementAdded: eePF + erPF + erNPS,
+    shortfall: built.shortfall,
+    keepPct: ctc > 0 ? (annualInhandFixed / ctc) * 100 : 0,
+    lostToCtc: ctc - annualInhandFixed - variableTarget
+  };
+}
+
+/** Same CTC, one field changed — used by the optimiser and the sliders. */
+function decodeWith(inp, overrides){
+  const c = Object.assign({}, inp, overrides);
+  if (inp.allowances) c.allowances = deepCopy(inp.allowances);
+  return decode(c);
+}
+
+/**
+ * Reverse solver: what CTC produces a given monthly in-hand?
+ * Binary search, because the tax function is piecewise and cannot be
+ * inverted algebraically. 60 halvings is far more precision than needed.
+ */
+function ctcForInhand(target, inp){
+  target = Math.max(0, safe(target));
+  if (target === 0) return 0;
+  let lo = 0, hi = Math.max(2e6, target * 40);
+  for (let i = 0; i < 44; i++){
+    const mid = (lo + hi) / 2;
+    const r = decodeWith(inp, { ctc: mid });
+    if (r.monthlyInhand < target) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/* ==================================================================
+   ██  DECODER — INPUT WIRING  ██
+   ================================================================== */
+let MODE = "A";                  // "A" = CTC only, "B" = full breakup
+let manualRows = [];             // Mode B component rows
+let charts = {};                 // live Chart.js instances, keyed by canvas id
+let lastResult = null;
+
+function fillSelect(id, options, selected){
+  const s = $(id); if (!s) return;
+  s.innerHTML = "";
+  options.forEach(o => { const op = el("option"); op.value = o; op.textContent = o; if (o === selected) op.selected = true; s.appendChild(op); });
+}
+function cityNames(){ return Object.keys(CITY_CONFIG); }
+function stateNames(){ return Object.keys(PT_CONFIG); }
+
+function buildAllowanceBox(){
+  const box = $("allowBox"); box.innerHTML = "";
+  for (const k in ALLOWANCE_CONFIG){
+    const c = ALLOWANCE_CONFIG[k];
+    const row = el("div", "row");
+    row.style.cssText = "justify-content:space-between;gap:8px;padding:4px 0";
+    row.innerHTML =
+      '<label class="switch" style="flex:1"><input type="checkbox" data-allow="' + k + '"' + (c.on ? " checked" : "") + '> ' + esc(c.label) + '</label>' +
+      '<input type="number" data-allowamt="' + k + '" value="' + c.annual + '" min="0" step="1000" style="width:110px">';
+    box.appendChild(row);
+  }
+  box.querySelectorAll("input").forEach(i => i.addEventListener("input", refresh));
+}
+
+function defaultManualRows(){
+  const s = buildStructure(readModeAInputs());
+  const rows = s.comps.map(c => ({
+    key: c.key, name: c.name, annual: Math.round(c.annual),
+    treat: c.side === "employer" ? "employer" : (c.treat === "exemptOld" ? "exemptOld" : "taxable"),
+    exemptCap: c.exemptCap === undefined ? null : c.exemptCap
+  }));
+  /* Always give the user a Variable Pay row, even at zero. Without it, someone
+     typing a bonus in as a custom line would have it counted as monthly salary,
+     which quietly overstates their in-hand. */
+  if (!rows.some(r => r.key === "variable")){
+    const i = rows.findIndex(r => r.treat === "employer");
+    rows.splice(i < 0 ? rows.length : i, 0,
+      { key:"variable", name:"Variable Pay / Performance Bonus", annual:0, treat:"taxable", exemptCap:null });
+  }
+  return rows;
+}
+function renderManualTable(){
+  const tb = $("manualBody"); tb.innerHTML = "";
+  manualRows.forEach((r, idx) => {
+    const tr = el("tr");
+    tr.innerHTML =
+      '<td style="text-align:left"><input type="text" value="' + esc(r.name) + '" data-mi="name" data-idx="' + idx + '" style="min-width:180px"></td>' +
+      '<td><input type="number" value="' + r.annual + '" min="0" step="1000" data-mi="annual" data-idx="' + idx + '" style="width:130px"></td>' +
+      '<td><select data-mi="treat" data-idx="' + idx + '" style="width:160px">' +
+        '<option value="taxable"' + (r.treat === "taxable" ? " selected" : "") + '>Taxable</option>' +
+        '<option value="exemptOld"' + (r.treat === "exemptOld" ? " selected" : "") + '>Exempt (old regime)</option>' +
+        '<option value="employer"' + (r.treat === "employer" ? " selected" : "") + '>Employer contribution</option>' +
+      '</select></td>' +
+      '<td><button class="btn danger sm" data-del="' + idx + '">✕</button></td>';
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll("[data-mi]").forEach(i => i.addEventListener("input", e => {
+    const idx = +e.target.dataset.idx, f = e.target.dataset.mi;
+    manualRows[idx][f] = f === "annual" ? safe(e.target.value) : e.target.value;
+    refresh();
+  }));
+  tb.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", e => {
+    manualRows.splice(+e.target.dataset.del, 1); renderManualTable(); refresh();
+  }));
+}
+
+function readModeAInputs(){
+  const allowances = {};
+  document.querySelectorAll("[data-allow]").forEach(i => {
+    const k = i.dataset.allow;
+    const amtEl = document.querySelector('[data-allowamt="' + k + '"]');
+    allowances[k] = { on: i.checked, annual: amtEl ? safe(amtEl.value) : ALLOWANCE_CONFIG[k].annual };
+  });
+  const city = $("i_city").value;
+  return {
+    ctc: num("i_ctc"), basicPct: num("i_basicPct", 40), hraPct: num("i_hraPct", 50),
+    city: city, state: $("i_state").value,
+    allowances: allowances,
+    pfCeiling: $("i_pfCeiling").checked, npsPct: num("i_npsPct", 0),
+    gratuityProv: $("i_gratuityProv").checked, insurance: num("i_insurance", 0),
+    varPct: num("i_varPct", 0), payoutPct: num("i_payoutPct", 100),
+    rent: num("i_rent", 0), regime: $("i_regime").value,
+    ded: { c80c:num("i_80c"), d80d:num("i_80d"), ccd1b:num("i_80ccd1b"), hloan:num("i_hloan") }
+  };
+}
+function readInputs(){
+  const base = readModeAInputs();
+  if (MODE === "A") return base;
+  const comps = manualRows.map(r => ({
+    key: r.key || "custom", name: r.name, annual: Math.max(0, safe(r.annual)),
+    side: r.treat === "employer" ? "employer" : "employee",
+    treat: r.treat, exemptCap: r.exemptCap === undefined ? null : r.exemptCap
+  }));
+  base.components = comps;
+  base.ctc = num("i_ctcB");
+  base.city = $("i_cityB").value;
+  base.state = $("i_stateB").value;
+  const b = comps.filter(c => c.key === "basic").reduce((a,c) => a + c.annual, 0);
+  base.basicPct = base.ctc > 0 ? (b / base.ctc) * 100 : 40;
+  return base;
+}
+
+/* ---- Validation. Every message is shown inline, next to its field. --- */
+function showErr(id, msg){
+  const e = $(id); if (!e) return;
+  e.textContent = msg || ""; e.classList.toggle("show", !!msg);
+  const input = $(id.replace("e_", "i_")); if (input) input.classList.toggle("bad", !!msg);
+}
+function validate(inp){
+  const problems = [];
+  showErr("e_ctc", ""); showErr("e_rent", "");
+  if (inp.ctc < 0){ showErr("e_ctc", "CTC cannot be negative."); problems.push("ctc"); }
+  else if (inp.ctc > 0 && inp.ctc < 60000){ showErr("e_ctc", "That looks too small for an annual CTC. Enter the yearly figure, not the monthly one."); problems.push("ctc"); }
+  else if (inp.ctc > 5000000000){ showErr("e_ctc", "That CTC is beyond what this app can sensibly model."); problems.push("ctc"); }
+  if (inp.basicPct < 20 || inp.basicPct > 70){
+    showErr("e_ctc", "Basic works out to " + pct(inp.basicPct) + " of CTC. Real structures sit between 20% and 70%.");
+    problems.push("basic");
+  }
+  if (inp.rent < 0){ showErr("e_rent", "Rent cannot be negative."); problems.push("rent"); }
+  return problems;
+}
+
+/* ==================================================================
+   ██  DECODER — RENDERING  ██
+   ================================================================== */
+let heroAnim = null, heroCurrent = 0;
+/** Count the hero figure up (or down) so a slider change is legible. */
+function animateHero(to){
+  const from = heroCurrent, delta = to - from, start = performance.now(), dur = 480;
+  if (heroAnim) cancelAnimationFrame(heroAnim);
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || Math.abs(delta) < 1){
+    heroCurrent = to; $("heroInhand").textContent = inr(to); return;
+  }
+  function frame(t){
+    const p = Math.min(1, (t - start) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    heroCurrent = from + delta * eased;
+    $("heroInhand").textContent = inr(heroCurrent);
+    if (p < 1) heroAnim = requestAnimationFrame(frame); else heroCurrent = to;
+  }
+  heroAnim = requestAnimationFrame(frame);
+}
+
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function chartTheme(){
+  return { ink: css("--charcoal"), muted: css("--ink-3"), line: css("--line"),
+           amber: css("--amber"), rust: css("--rust"), green: css("--green"), card: css("--card") };
+}
+function makeChart(id, cfg){
+  if (charts[id]){ charts[id].destroy(); delete charts[id]; }
+  const c = $(id); if (!c) return null;
+  charts[id] = new Chart(c.getContext("2d"), cfg);
+  return charts[id];
+}
+
+function refresh(){
+  const inp = readInputs();
+  const problems = validate(inp);
+  syncLabels(inp);
+  if (problems.length && (problems.includes("ctc"))){
+    $("warnBox").innerHTML = '<div class="notice warn">Fix the highlighted field to see your numbers.</div>';
+    return;
+  }
+  const r = decode(inp);
+  lastResult = { inp, r };
+  renderHero(r, inp);
+  renderWarnings(r, inp);
+  renderWaterfall(r);
+  renderStats(r);
+  renderRegimes(r);
+  renderComponents(r);
+  renderMonths(r);
+  renderOptimiser(r, inp);
+  renderHra(r, inp);
+  renderPfCeiling(r, inp);
+  renderNps(r, inp);
+  renderGratuity(r, inp);
+  renderPfProjection(r, inp);
+  renderHike(r, inp);
+  if (MODE === "B") renderSumCheck(r, inp);
+  saveState();
+}
+
+function syncLabels(inp){
+  $("v_basic").textContent  = num("i_basicPct", 40) + "%";
+  $("v_hra").textContent    = num("i_hraPct", 50) + "%";
+  $("v_var").textContent    = num("i_varPct", 0) + "%";
+  $("v_payout").textContent = num("i_payoutPct", 100) + "%";
+  $("v_nps").textContent    = num("i_npsPct", 0) + "%";
+  $("v_hike").textContent   = num("i_hike", 0) + "%";
+  $("ctcWords").textContent = inrShort(MODE === "A" ? num("i_ctc") : num("i_ctcB")) + " per year";
+}
+
+function renderHero(r, inp){
+  animateHero(r.monthlyInhand);
+  $("heroAnnual").textContent = inr(r.annualInhandFixed) + " per year lands in your bank account" +
+    (r.variableExpected > 0 ? ", plus " + inr(r.variableNet) + " net variable pay" : "");
+  $("pillGross").textContent  = inr(r.grossMonthly);
+  $("pillRegime").textContent = r.regimeLabel;
+  $("pillTds").textContent    = inr(r.monthlyTDS);
+  $("pillPf").textContent     = inr(r.eePF / 12);
+  const keep = r.keepPct, lost = r.ctc - r.annualInhandFixed - r.variableTarget;
+  $("heroGap").innerHTML = "You take home <b>" + pct(keep, 0) + "</b> of your CTC. <b>" + inr(lost) +
+    "</b> per year goes to PF, tax and employer contributions" + (r.variableTarget > 0 ? ", and " + inr(r.variableTarget) + " is variable pay that depends on performance" : "") + ".";
+}
+
+function renderWarnings(r, inp){
+  const w = [];
+  if (r.shortfall > 0) w.push('<div class="notice warn"><b>The structure does not fit.</b> The components you chose exceed the CTC by ' + inr(r.shortfall) + '. Lower the basic percentage, or switch off an allowance.</div>');
+  if (inp.rent * 12 > r.grossFixed && inp.rent > 0) w.push('<div class="notice warn">Your rent (' + inr(inp.rent * 12) + ' a year) is higher than your gross salary. Check the figure — HRA exemption is capped by your basic anyway.</div>');
+  if (r.esiApplies) w.push('<div class="notice">ESI applies at this salary level: ' + pct(PF_CONFIG.esi.employeeRate * 100, 2) + ' from you and ' + pct(PF_CONFIG.esi.employerRate * 100, 2) + ' from your employer.</div>');
+  if (r.hra > 0 && safe(inp.rent) === 0) w.push('<div class="notice">You are being paid HRA but paying no rent, so there is no exemption to claim. Enter your monthly rent on the left to see what it is worth.</div>');
+  $("warnBox").innerHTML = w.join("");
+}
+
+function renderWaterfall(r){
+  const T = chartTheme();
+  const labels = [], data = [], colors = [];
+  let run = 0;
+  r.steps.forEach(s => {
+    labels.push(s.label);
+    if (s.type === "total" || s.type === "final"){
+      data.push([0, s.value]); run = s.value;
+      colors.push(s.type === "final" ? T.amber : T.ink);
+    } else {
+      data.push([run + s.value, run]); run += s.value; colors.push(T.rust);
+    }
+  });
+  makeChart("chartWaterfall", {
+    type:"bar",
+    data:{ labels, datasets:[{ data, backgroundColor:colors, borderRadius:4, borderSkipped:false, barPercentage:.78 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false },
+        tooltip:{ callbacks:{ label:(c) => {
+          const s = r.steps[c.dataIndex];
+          return (s.type === "minus" ? "− " : "") + inr(Math.abs(s.value)) + (s.note ? "  (" + s.note + ")" : "");
+        } } } },
+      scales:{
+        x:{ ticks:{ color:T.muted, maxRotation:60, minRotation:35, font:{ size:10 } }, grid:{ display:false } },
+        y:{ ticks:{ color:T.muted, callback:v => inrShort(v), font:{ size:11 } }, grid:{ color:T.line } }
+      }
+    }
+  });
+  // The same walk, written out in words next to the chart
+  let acc = 0; const left = [], right = [];
+  r.steps.forEach((s, i) => {
+    const isTot = s.type === "total" || s.type === "final";
+    if (isTot) acc = s.value; else acc += s.value;
+    const html = '<div class="spread"><span' + (isTot ? ' style="font-weight:700"' : ' class="muted"') + '>' +
+      (isTot ? "= " : "− ") + esc(s.label) + '</span><b class="num ' + (isTot ? (s.type === "final" ? "amb" : "") : "neg") + '">' +
+      inr(isTot ? s.value : Math.abs(s.value)) + '</b></div>';
+    (i < r.steps.length / 2 ? left : right).push(html);
+  });
+  $("wfSteps").innerHTML = left.join("");
+  $("wfSteps2").innerHTML = right.join("");
+}
+
+function renderStats(r){
+  $("s_inhand").textContent  = inr(r.annualInhandFixed);
+  $("s_inhandL").textContent = inrShort(r.annualInhandFixed) + (r.variableNet > 0 ? " + " + inrShort(r.variableNet) + " net variable" : "");
+  $("s_tax").textContent     = inr(r.taxAll.total);
+  $("s_taxRate").textContent = "Effective rate " + pct(r.ctc > 0 ? r.taxAll.total / r.ctc * 100 : 0) + " of CTC · marginal " + pct(r.marginal * 100, 0);
+  $("s_retire").textContent  = inr(r.retirementAdded);
+  $("s_pct").textContent     = pct(r.keepPct, 1);
+  $("s_pctNote").textContent = inr(r.ctc - r.annualInhandFixed) + " does not reach your account";
+}
+
+function renderRegimes(r){
+  const rows = [["new", r.taxNewAll, r.newTaxable, r.newBreakup], ["old", r.taxOldAll, r.oldTaxable, r.oldBreakup]];
+  const better = r.taxNewAll.total <= r.taxOldAll.total ? "new" : "old";
+  $("regimeCards").innerHTML = rows.map(([k, t, taxable, bk]) => {
+    const isBetter = k === better;
+    return '<div class="card tight" style="margin:0;border-color:' + (isBetter ? "var(--green)" : "var(--line)") + '">' +
+      '<div class="card-head" style="margin-bottom:8px"><h3>' + TAX_CONFIG.regimes[k].label + '</h3>' +
+      (isBetter ? '<span class="tag exempt">Better for you</span>' : '') + '</div>' +
+      '<div class="spread"><span>Taxable income</span><b class="num">' + inr(taxable) + '</b></div>' +
+      '<div class="spread"><span>Tax before cess</span><b class="num">' + inr(t.slabTax + t.surcharge) + '</b></div>' +
+      (t.surcharge > 0 ? '<div class="spread"><span class="muted">of which surcharge @ ' + pct(t.surchargeRate * 100, 0) + '</span><b class="num">' + inr(t.surcharge) + '</b></div>' : '') +
+      '<div class="spread"><span>Cess @ ' + pct(TAX_CONFIG.cess * 100, 0) + '</span><b class="num">' + inr(t.cess) + '</b></div>' +
+      '<div class="spread"><span><b>Total tax</b></span><b class="num neg">' + inr(t.total) + '</b></div>' +
+      '<div class="spread"><span class="muted">Deductions used</span><b class="num">' + inr(Object.values(bk).reduce((a, b) => a + safe(b), 0)) + '</b></div>' +
+      '</div>';
+  }).join("");
+  const saving = Math.abs(r.taxNewAll.total - r.taxOldAll.total);
+  $("regimeVerdict").innerHTML = saving < 1
+    ? "Both regimes cost you almost exactly the same at this salary and these declarations."
+    : "The <b>" + TAX_CONFIG.regimes[better].label.toLowerCase() + "</b> saves you <b>" + inr(saving) + "</b> a year — " + inr(saving / 12) + " more in hand every month.";
+}
+
+function renderComponents(r){
+  const tb = $("compBody"); tb.innerHTML = "";
+  const tag = c => c.side === "employer" ? '<span class="tag emp">Employer contribution</span>'
+                 : (c.treat === "exemptOld" ? '<span class="tag exempt">Exempt (old regime)</span>' : '<span class="tag tax">Taxable</span>');
+  const add = (rows, title) => {
+    if (!rows.length) return;
+    const h = el("tr"); h.innerHTML = '<td colspan="4" style="background:var(--cream);font-weight:700;font-size:.76rem;text-transform:uppercase;letter-spacing:.05em">' + title + '</td>';
+    tb.appendChild(h);
+    rows.forEach(c => {
+      const tr = el("tr");
+      tr.innerHTML = '<td>' + esc(c.name) + '</td><td class="num">' + inr(c.annual / 12) + '</td><td class="num">' + inr(c.annual) + '</td><td style="text-align:right">' + tag(c) + '</td>';
+      tb.appendChild(tr);
+    });
+    const t = el("tr");
+    const tot = rows.reduce((a, c) => a + safe(c.annual), 0);
+    t.innerHTML = '<td><b>Total</b></td><td class="num"><b>' + inr(tot / 12) + '</b></td><td class="num"><b>' + inr(tot) + '</b></td><td></td>';
+    tb.appendChild(t);
+  };
+  add(r.comps.filter(c => c.side === "employee" && c.key !== "variable"), "Paid to you monthly");
+  add(r.comps.filter(c => c.key === "variable"), "Variable pay");
+  add(r.employerItems, "Employer contributions — inside CTC, not in your account");
+}
+
+function renderMonths(r){
+  const tb = $("monthBody"); tb.innerHTML = "";
+  r.months.forEach(m => {
+    const tr = el("tr");
+    tr.innerHTML = '<td>' + m.m + '</td><td class="num">' + inr(m.gross) + '</td><td class="num neg">' + inr(m.pf) +
+      '</td><td class="num neg">' + inr(m.pt) + '</td><td class="num neg">' + inr(m.tds) + '</td><td class="num neg">' + inr(m.other) +
+      '</td><td class="num"><b>' + inr(m.inhand) + '</b></td>';
+    tb.appendChild(tr);
+  });
+  const s = k => r.months.reduce((a, m) => a + m[k], 0);
+  $("monthFoot").innerHTML = '<tr><td>Year</td><td class="num">' + inr(s("gross")) + '</td><td class="num">' + inr(s("pf")) +
+    '</td><td class="num">' + inr(s("pt")) + '</td><td class="num">' + inr(s("tds")) + '</td><td class="num">' + inr(s("other")) +
+    '</td><td class="num">' + inr(s("inhand")) + '</td></tr>';
+}
+
+/* ---- A Mode-A style input, so the optimiser works in both modes ---- */
+function optInputs(){
+  const inp = readInputs();
+  if (MODE === "A") return inp;
+  const a = readModeAInputs();
+  a.ctc = inp.ctc; a.city = inp.city; a.state = inp.state;
+  a.basicPct = clamp(inp.basicPct, 20, 70);
+  const r = decode(inp);
+  a.hraPct = r.basic > 0 ? clamp(r.hra / r.basic * 100, 0, 100) : 50;
+  a.rent = inp.rent; a.ded = inp.ded; a.regime = inp.regime;
+  return a;
+}
+
+/* ---- Basic % trade-off : take-home falls, retirement savings rise ---- */
+function renderOptimiser(r, inpRaw){
+  const inp = optInputs();
+  const T = chartTheme();
+  const xs = [], inhand = [], retire = [];
+  for (let p = 30; p <= 60; p += 2){
+    const d = decodeWith(inp, { basicPct: p });
+    xs.push(p + "%"); inhand.push(Math.round(d.monthlyInhand)); retire.push(Math.round(d.retirementAdded / 12));
+  }
+  makeChart("chartBasic", {
+    type:"line",
+    data:{ labels:xs, datasets:[
+      { label:"Monthly in-hand", data:inhand, borderColor:T.amber, backgroundColor:"rgba(245,179,1,.14)", fill:true, tension:.3, pointRadius:2, yAxisID:"y" },
+      { label:"Monthly retirement savings", data:retire, borderColor:T.green, backgroundColor:"rgba(27,138,90,.10)", fill:true, tension:.3, pointRadius:2, yAxisID:"y" }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:"index", intersect:false },
+      plugins:{ legend:{ labels:{ color:T.ink, boxWidth:12, font:{ size:11 } } },
+                tooltip:{ callbacks:{ label:c => c.dataset.label + ": " + inr(c.parsed.y) } } },
+      scales:{ x:{ title:{ display:true, text:"Basic as a % of CTC", color:T.muted, font:{ size:11 } }, ticks:{ color:T.muted }, grid:{ display:false } },
+               y:{ ticks:{ color:T.muted, callback:v => inrShort(v) }, grid:{ color:T.line } } }
+    }
+  });
+  const lo = decodeWith(inp, { basicPct: 30 }), hi = decodeWith(inp, { basicPct: 60 }), cur = decodeWith(inp, { basicPct: inp.basicPct });
+  $("ob_low").textContent   = inr(lo.monthlyInhand);
+  $("ob_lowR").textContent  = inr(lo.retirementAdded) + " into PF & NPS this year";
+  $("ob_cur").textContent   = inr(cur.monthlyInhand);
+  $("ob_curR").textContent  = inr(cur.retirementAdded) + " into PF & NPS this year";
+  $("ob_high").textContent  = inr(hi.monthlyInhand);
+  $("ob_highR").textContent = inr(hi.retirementAdded) + " into PF & NPS this year";
+}
+
+/* ---- HRA exemption : the three-part rule, made visible -------------- */
+function renderHra(r, inp){
+  const e = r.hraEx;
+  const nameOf = { hra:"the HRA you actually receive", rent:"your rent minus 10% of basic", basic:(r.isMetro ? "50%" : "40%") + " of your basic", none:"nothing — you pay no rent" };
+  // The rent level at which the exemption is fully used: rent = cap + 10% of basic
+  const cap = Math.min(e.byHra, e.byBasicPct);
+  const rentNeeded = (cap + 0.10 * r.basic) / 12;
+  const taxSaved = r.regime === "old" ? e.exempt * r.marginal : 0;
+  $("hraOut").innerHTML =
+    '<div class="hint" style="margin-top:-6px;margin-bottom:10px">The exemption is the <b>least</b> of three figures. Whichever is smallest is the one binding you.</div>' +
+    '<div class="spread"><span>1 · HRA received</span><b class="num">' + inr(e.byHra) + '</b></div>' +
+    '<div class="spread"><span>2 · Rent paid − 10% of Basic</span><b class="num">' + inr(e.byRent) + '</b></div>' +
+    '<div class="spread"><span>3 · ' + (r.isMetro ? "50%" : "40%") + ' of Basic (' + (r.isMetro ? "metro" : "non-metro") + ')</span><b class="num">' + inr(e.byBasicPct) + '</b></div>' +
+    '<div class="spread"><span><b>Exemption allowed</b></span><b class="num pos">' + inr(e.exempt) + '</b></div>' +
+    '<div class="notice ' + (r.regime === "old" ? "good" : "") + '" style="margin-top:12px">' +
+      (r.regime === "old"
+        ? 'Capped by <b>' + nameOf[e.binding] + '</b>. This saves you about <b>' + inr(taxSaved) + '</b> in tax a year.'
+        : 'You are on the new regime, where HRA exemption does not apply. Under the old regime this exemption would be ' + inr(e.exempt) + '.') +
+    '</div>' +
+    (r.hra > 0 ? '<div class="hint">Pay <b>' + inr(rentNeeded) + '</b> a month or more and the exemption is fully used. Beyond that, extra rent buys you no extra exemption.</div>' : '');
+}
+
+/* ---- PF ceiling : cash now vs corpus later -------------------------- */
+function renderPfCeiling(r, inp){
+  const base = optInputs();
+  const withCap = decodeWith(base, { pfCeiling: true });
+  const noCap   = decodeWith(base, { pfCeiling: false });
+  const dCash   = withCap.monthlyInhand - noCap.monthlyInhand;
+  const dCorpus = noCap.retirementAdded - withCap.retirementAdded;
+  $("pfCeilOut").innerHTML =
+    '<div class="hint" style="margin-top:-6px;margin-bottom:10px">Your employer may contribute 12% of your full basic, or only on the ₹' + groupIndian(String(PF_CONFIG.wageCeiling)) + ' statutory wage. It is a choice, and it is worth money either way.</div>' +
+    '<div class="spread"><span>On full basic — in hand</span><b class="num">' + inr(noCap.monthlyInhand) + '</b></div>' +
+    '<div class="spread"><span>On full basic — PF added this year</span><b class="num pos">' + inr(noCap.retirementAdded) + '</b></div>' +
+    '<div class="spread"><span>Capped at ₹' + groupIndian(String(PF_CONFIG.wageCeiling)) + ' — in hand</span><b class="num">' + inr(withCap.monthlyInhand) + '</b></div>' +
+    '<div class="spread"><span>Capped — PF added this year</span><b class="num pos">' + inr(withCap.retirementAdded) + '</b></div>' +
+    '<div class="notice" style="margin-top:12px">Capping the PF puts <b>' + inr(Math.abs(dCash)) + '</b> more in your pocket every month, and <b>' + inr(Math.abs(dCorpus)) + '</b> less into your retirement corpus every year.</div>';
+}
+
+/* ---- Employer NPS under 80CCD(2) ------------------------------------ */
+function renderNps(r, inp){
+  const base = optInputs();
+  const pctCeil = Math.round(((TAX_CONFIG.regimes[r.regime].ccd2Pct) || 0.10) * 100);
+  const with0  = decodeWith(base, { npsPct: 0 });
+  const withMx = decodeWith(base, { npsPct: pctCeil });
+  const taxSaved = with0.taxAll.total - withMx.taxAll.total;
+  $("npsOut").innerHTML =
+    '<div class="hint" style="margin-top:-6px;margin-bottom:10px">If your employer routes part of your CTC into NPS, that slice is deductible up to <b>' + pctCeil + '% of Basic</b> under the ' + TAX_CONFIG.regimes[r.regime].label.toLowerCase() + '. It is one of very few deductions the new regime still allows.</div>' +
+    '<div class="grid g3">' +
+      '<div class="stat"><div class="stat-label">No employer NPS</div><div class="stat-value num">' + inr(with0.monthlyInhand) + '</div><div class="stat-note">Tax ' + inr(with0.taxAll.total) + '</div></div>' +
+      '<div class="stat"><div class="stat-label">NPS at ' + pctCeil + '% of Basic</div><div class="stat-value num">' + inr(withMx.monthlyInhand) + '</div><div class="stat-note">Tax ' + inr(withMx.taxAll.total) + '</div></div>' +
+      '<div class="stat"><div class="stat-label">Tax saved a year</div><div class="stat-value num pos">' + inr(Math.max(0, taxSaved)) + '</div><div class="stat-note">' + inr(withMx.retirementAdded - with0.retirementAdded) + ' extra into NPS</div></div>' +
+    '</div>' +
+    '<div class="hint" style="margin-top:10px">Take-home falls, because the money goes into NPS instead of your account — but it is your money, and it is untaxed on the way in. NPS is locked until 60, with limited partial withdrawals.</div>';
+}
+
+/* ---- Gratuity ------------------------------------------------------- */
+function renderGratuity(r, inp){
+  const G = GRATUITY_CONFIG;
+  const years = Math.max(0, num("i_gratYears", 5));
+  const lastBasicMonthly = r.basic / 12;
+  const amount = lastBasicMonthly * (G.daysPerYear / G.monthDays) * years;
+  const eligible = years >= G.eligibilityYears;
+  const taxable = Math.max(0, amount - G.exemptionCap);
+  $("gratOut").innerHTML =
+    '<div class="spread"><span>Formula</span><b>' + G.daysPerYear + '/' + G.monthDays + ' × last Basic × years</b></div>' +
+    '<div class="spread"><span>Last drawn Basic (monthly)</span><b class="num">' + inr(lastBasicMonthly) + '</b></div>' +
+    '<div class="spread"><span>Gratuity at ' + years + ' years</span><b class="num ' + (eligible ? "pos" : "") + '">' + inr(eligible ? amount : 0) + '</b></div>' +
+    '<div class="spread"><span>Tax-free up to</span><b class="num">' + inr(G.exemptionCap) + '</b></div>' +
+    (taxable > 0 && eligible ? '<div class="spread"><span>Taxable portion</span><b class="num neg">' + inr(taxable) + '</b></div>' : '') +
+    '<div class="notice ' + (eligible ? "good" : "warn") + '" style="margin-top:10px">' +
+      (eligible
+        ? 'You cross the ' + G.eligibilityYears + '-year mark, so this is payable. Had you left at 4 years and 11 months, it would be <b>zero</b>.'
+        : '<b>Not payable yet.</b> Gratuity needs ' + G.eligibilityYears + ' years of continuous service. Leaving now forfeits ' + inr(amount) + '.') +
+    '</div>' +
+    (r.employerItems.some(c => c.key === "grat")
+      ? '<div class="hint">Your employer is already parking ' + inr(r.employerItems.filter(c => c.key === "grat")[0].annual) + ' a year inside your CTC for this — money you only see if you stay.</div>' : '');
+}
+
+/* ---- PF corpus projector ------------------------------------------- */
+function renderPfProjection(r, inp){
+  const age = clamp(num("i_age", 30), 18, 70), ret = clamp(num("i_retAge", 58), age + 1, 75);
+  const growth = clamp(num("i_growth", 8), 0, 40) / 100, rate = clamp(num("i_epfRate", 8.25), 0, 20) / 100;
+  const years = Math.round(ret - age);
+  let corpus = 0, basic = r.basic, contribTotal = 0;
+  for (let y = 0; y < years; y++){
+    const wageM = inp.pfCeiling ? Math.min(basic / 12, PF_CONFIG.wageCeiling) : basic / 12;
+    const yearContrib = wageM * (PF_CONFIG.employeeRate + PF_CONFIG.employerRate) * 12;
+    contribTotal += yearContrib;
+    // interest credited on the opening balance plus roughly half a year on the new money
+    corpus = corpus * (1 + rate) + yearContrib * (1 + rate / 2);
+    basic *= (1 + growth);
+  }
+  $("pfProjOut").innerHTML =
+    '<div class="spread"><span>Years to ' + ret + '</span><b class="num">' + years + '</b></div>' +
+    '<div class="spread"><span>Total contributed (you + employer)</span><b class="num">' + inrShort(contribTotal) + '</b></div>' +
+    '<div class="spread"><span>Interest earned</span><b class="num pos">' + inrShort(corpus - contribTotal) + '</b></div>' +
+    '<div class="spread"><span><b>PF corpus at ' + ret + '</b></span><b class="num pos" style="font-size:1.05rem">' + inrShort(corpus) + '</b></div>' +
+    '<div class="hint">Assumes ' + pct(growth * 100) + ' salary growth and ' + pct(rate * 100, 2) + ' interest throughout, no withdrawals, and that you keep transferring the account when you switch jobs.</div>';
+}
+
+/* ---- Hike, and the reverse question everybody actually asks --------- */
+function renderHike(r, inp){
+  const base = optInputs();
+  const h = clamp(num("i_hike", 20), 0, 400) / 100;
+  const newCtc = base.ctc * (1 + h);
+  const after = decodeWith(base, { ctc: newCtc });
+  const dCash = after.monthlyInhand - r.monthlyInhand;
+  const realHike = r.monthlyInhand > 0 ? (dCash / r.monthlyInhand) * 100 : 0;
+  $("hikeOut").innerHTML =
+    '<div class="spread"><span>New CTC</span><b class="num">' + inr(newCtc) + ' <span class="muted">(' + inrShort(newCtc) + ')</span></b></div>' +
+    '<div class="spread"><span>New monthly in-hand</span><b class="num amb">' + inr(after.monthlyInhand) + '</b></div>' +
+    '<div class="spread"><span>Extra every month</span><b class="num pos">' + inr(dCash) + '</b></div>' +
+    '<div class="spread"><span>Extra tax a year</span><b class="num neg">' + inr(after.taxAll.total - r.taxAll.total) + '</b></div>' +
+    '<div class="notice" style="margin-top:10px">A <b>' + pct(h * 100, 0) + '</b> hike on paper is a <b>' + pct(realHike, 1) + '</b> hike in your bank account.</div>';
+
+  const target = Math.max(0, num("i_targetInhand", 0));
+  const needed = ctcForInhand(target, base);
+  const check = decodeWith(base, { ctc: needed });
+  $("reverseOut").innerHTML =
+    '<div class="notice good" style="margin-top:0"><div style="font-size:.82rem;color:var(--ink-2);margin-bottom:2px">To take home ' + inr(target) + ' per month, you need a CTC of</div>' +
+    '<div style="font-family:Poppins;font-weight:800;font-size:1.6rem;line-height:1.1">' + inrShort(needed) + '</div>' +
+    '<div class="num" style="font-size:.85rem">' + inr(needed) + ' a year</div></div>' +
+    '<div class="spread"><span>Ask, as a hike on your current CTC</span><b class="num">' + pct(base.ctc > 0 ? (needed / base.ctc - 1) * 100 : 0, 1) + '</b></div>' +
+    '<div class="spread"><span>Gap to close</span><b class="num">' + inr(Math.max(0, needed - base.ctc)) + '</b></div>' +
+    '<div class="spread"><span>In-hand at that CTC</span><b class="num">' + inr(check.monthlyInhand) + '</b></div>' +
+    '<div class="hint">Computed at your current structure, city and declarations. Change the basic percentage and this number moves.</div>';
+}
+
+/* ---- Mode B : does the breakup add up to the stated CTC? ------------ */
+function renderSumCheck(r, inp){
+  const sum = manualRows.reduce((a, x) => a + Math.max(0, safe(x.annual)), 0);
+  const diff = inp.ctc - sum;
+  const box = $("sumCheck");
+  if (Math.abs(diff) < 1){
+    box.className = "notice good";
+    box.innerHTML = "The components add up to the stated CTC exactly.";
+  } else {
+    box.className = "notice warn";
+    box.innerHTML = "The components add up to <b>" + inr(sum) + "</b>, which is <b>" + inr(Math.abs(diff)) + "</b> " +
+      (diff > 0 ? "less" : "more") + " than the stated CTC of " + inr(inp.ctc) +
+      ". Use <b>Auto-adjust Special Allowance</b> to close the gap, or correct a line above.";
+  }
+}
+
+/* ==================================================================
+   ██  MODULE 2 — OFFER COMPARATOR  ██
+   ================================================================== */
+let offers = [];
+let weights = {};
+FACTORS.forEach(f => weights[f.key] = 5);
+
+function newOffer(i){
+  const o = {
+    name: "Offer " + String.fromCharCode(65 + i), city: "Bengaluru", state: "Karnataka",
+    ctc: 2000000, basicPct: 40, hraPct: 50, rent: 25000,
+    varPct: 10, payoutPct: 80,
+    joining: 0, clawback: 12, retention: 0, retentionYear: 2,
+    equity: 0, vestYears: 4, cliff: 12, liquidity: "listed",
+    relocAllow: 0, relocCost: 0, buyout: false, noticeMonths: 2, gapMonths: 0,
+    insSelf: 500000, insFamily: 0, insParents: 0, premiumBy: "employer", premium: 12000,
+    perks: 0, hike: 10, hours: 45, commute: 30, ratings: {}
+  };
+  FACTORS.forEach(f => o.ratings[f.key] = 7);
+  return o;
+}
+
+/** One offer, fully evaluated — money, equity, hours, everything. */
+function evalOffer(o, opts){
+  const inp = {
+    ctc: safe(o.ctc), basicPct: clamp(o.basicPct, 20, 70), hraPct: clamp(o.hraPct, 0, 100),
+    city: o.city, state: o.state, allowances: {},
+    pfCeiling: false, npsPct: 0, gratuityProv: true,
+    insurance: o.premiumBy === "employer" ? safe(o.premium) : 0,
+    varPct: clamp(o.varPct, 0, 90), payoutPct: clamp(o.payoutPct, 0, 200),
+    rent: safe(o.rent), regime: "auto", ded: {}
+  };
+  const d = decode(inp);
+  const mr = d.marginal;
+
+  // Equity. A haircut for illiquidity, then tax at vest. Paper is not cash.
+  const disc = clamp(opts.eqDiscount, 0, 100) / 100;
+  const liqFactor = o.liquidity === "listed" ? 1 : (o.liquidity === "buyback" ? 1 - disc / 2 : 1 - disc);
+  const perYearVest = safe(o.vestYears) > 0 ? safe(o.equity) / safe(o.vestYears) : 0;
+  const vestedInYear = y => (y * 12 >= safe(o.cliff) ? perYearVest : 0);
+  const netEquity = y => vestedInYear(y) * liqFactor * (1 - mr);
+
+  // Joining bonus, amortised across its clawback so a 3-year lock is not year-1 cash
+  const clawM = Math.max(0, safe(o.clawback));
+  const joinNet = safe(o.joining) * (1 - mr);
+  const joinY1 = clawM <= 12 ? joinNet : joinNet * (12 / clawM);
+  const retNet = safe(o.retention) * (1 - mr);
+
+  const noticeCost = o.buyout ? 0 : Math.max(0, safe(o.gapMonths)) * d.monthlyInhand;
+  const insValue = o.premiumBy === "employer" ? safe(o.premium) : -safe(o.premium);
+  const sumInsured = safe(o.insSelf) + safe(o.insFamily) + safe(o.insParents);
+
+  const year1 = d.annualInhandFixed + d.variableNet + joinY1 + netEquity(1)
+              + (safe(o.retentionYear) === 1 ? retNet : 0)
+              + safe(o.relocAllow) - safe(o.relocCost) - noticeCost + safe(o.perks) + insValue;
+
+  // Three-year projection — a slower offer at a faster-growing company catches up
+  const hike = clamp(o.hike, 0, 100) / 100;
+  const proj = [];
+  for (let y = 1; y <= 3; y++){
+    const dy = y === 1 ? d : decode(Object.assign({}, inp, { ctc: inp.ctc * Math.pow(1 + hike, y - 1) }));
+    let v = dy.annualInhandFixed + dy.variableNet + netEquity(y) + safe(o.perks) + insValue;
+    if (y === 1) v += joinY1 + safe(o.relocAllow) - safe(o.relocCost) - noticeCost;
+    else if (clawM > 12 && (y - 1) * 12 < clawM) v += joinNet * Math.min(1, 12 / clawM);
+    if (safe(o.retentionYear) === y) v += retNet;
+    proj.push(v);
+  }
+
+  // Cost of living: what the same money is worth in the base city
+  const cityCol  = (CITY_CONFIG[o.city] || { col: 100 }).col;
+  const baseCol  = (CITY_CONFIG[opts.baseCity] || { col: 100 }).col;
+  const colFactor = cityCol > 0 ? baseCol / cityCol : 1;
+  const adjInhand = d.annualInhandFixed * colFactor;
+
+  // Effective hourly rate — the number that reverses rankings
+  const workHours   = clamp(o.hours, 1, 100) * 48;
+  const commuteHours= (clamp(o.commute, 0, 300) * 2 * clamp(opts.workDays, 50, 365)) / 60;
+  const hourly = (workHours + commuteHours) > 0 ? (d.annualInhandFixed + d.variableNet) / (workHours + commuteHours) : 0;
+
+  // Weighted preference score out of 100:
+  //   score = Σ(rating × weight) ÷ Σ(10 × weight) × 100
+  // Dividing by the maximum attainable weighted total keeps every offer on
+  // the same 0–100 scale no matter what weights the user chose.
+  let wsum = 0, top = 0;
+  FACTORS.forEach(f => { const w = clamp(weights[f.key], 0, 10); wsum += clamp(o.ratings[f.key], 0, 10) * w; top += 10 * w; });
+  const score = top > 0 ? (wsum / top) * 100 : 0;
+
+  return { o, d, year1, proj, hourly, score, adjInhand, colFactor, netEquityY1: netEquity(1),
+           joinY1, retNet, noticeCost, insValue, sumInsured, liqFactor, mr,
+           totalEquityNet: safe(o.equity) * liqFactor * (1 - mr),
+           threeYear: proj.reduce((a, b) => a + b, 0) };
+}
+
+function cmpOpts(){
+  return { baseCity: $("i_baseCity").value, workDays: num("i_workDays", 240), eqDiscount: num("i_eqDiscount", 60) };
+}
+
+/* ---- Offer input cards --------------------------------------------- */
+function renderOfferCards(){
+  const box = $("offerCards"); box.innerHTML = "";
+  offers.forEach((o, i) => {
+    const c = el("div", "card"); c.style.margin = "0";
+    const cityOpts = cityNames().map(n => '<option value="' + n + '"' + (n === o.city ? " selected" : "") + '>' + n + '</option>').join("");
+    const stateOpts = stateNames().map(n => '<option value="' + n + '"' + (n === o.state ? " selected" : "") + '>' + n + '</option>').join("");
+    const F = (f, label, val, step, attrs) =>
+      '<label class="fld"><span class="lbl">' + label + '</span><input type="number" data-oi="' + i + '" data-f="' + f + '" value="' + safe(val) + '" step="' + (step || 1) + '" ' + (attrs || "") + '></label>';
+    c.innerHTML =
+      '<div class="card-head">' +
+        '<input type="text" data-oi="' + i + '" data-f="name" value="' + esc(o.name) + '" style="font-family:Poppins;font-weight:700;font-size:1.05rem;border:none;background:transparent;padding:2px 0;width:auto;max-width:60%">' +
+        '<button class="btn danger sm no-print" data-rmoffer="' + i + '"' + (offers.length <= 2 ? " disabled style=opacity:.35" : "") + '>Remove</button>' +
+      '</div>' +
+      '<div class="grid g2" style="gap:0 12px">' +
+        F("ctc", "Fixed CTC (₹/yr)", o.ctc, 50000) +
+        '<label class="fld"><span class="lbl">City</span><select data-oi="' + i + '" data-f="city">' + cityOpts + '</select></label>' +
+        '<label class="fld"><span class="lbl">State (PT)</span><select data-oi="' + i + '" data-f="state">' + stateOpts + '</select></label>' +
+        F("rent", "Monthly rent there (₹)", o.rent, 1000) +
+        F("basicPct", "Basic % of CTC", o.basicPct, 1, 'min="20" max="70"') +
+        F("hraPct", "HRA % of Basic", o.hraPct, 1, 'min="0" max="60"') +
+        F("varPct", "Variable % of CTC", o.varPct, 1, 'min="0" max="90"') +
+        F("payoutPct", "Realistic payout %", o.payoutPct, 5, 'min="0" max="200"') +
+      '</div>' +
+      '<details class="acc"><summary>Bonuses, equity &amp; costs</summary><div class="grid g2" style="gap:0 12px">' +
+        F("joining", "Joining bonus (₹)", o.joining, 10000) +
+        F("clawback", "Clawback period (months)", o.clawback, 1) +
+        F("retention", "Retention bonus (₹)", o.retention, 10000) +
+        F("retentionYear", "Paid in year", o.retentionYear, 1, 'min="1" max="5"') +
+        F("equity", "ESOP / RSU grant value (₹)", o.equity, 50000) +
+        F("vestYears", "Vesting years", o.vestYears, 1, 'min="1" max="8"') +
+        F("cliff", "Cliff (months)", o.cliff, 1) +
+        '<label class="fld"><span class="lbl">Liquidity</span><select data-oi="' + i + '" data-f="liquidity">' +
+          '<option value="listed"' + (o.liquidity === "listed" ? " selected" : "") + '>Listed &amp; sellable</option>' +
+          '<option value="buyback"' + (o.liquidity === "buyback" ? " selected" : "") + '>Private, with buybacks</option>' +
+          '<option value="illiquid"' + (o.liquidity === "illiquid" ? " selected" : "") + '>Private &amp; illiquid</option>' +
+        '</select></label>' +
+        F("relocAllow", "Relocation allowance (₹)", o.relocAllow, 5000) +
+        F("relocCost", "Actual relocation cost (₹)", o.relocCost, 5000) +
+        F("noticeMonths", "Your notice period (months)", o.noticeMonths, 1) +
+        F("gapMonths", "Unpaid gap between jobs (months)", o.gapMonths, 0.5) +
+        F("perks", "Other perks — your rupee value (₹/yr)", o.perks, 5000) +
+        F("hike", "Expected annual hike %", o.hike, 1) +
+      '</div>' +
+      '<label class="switch"><input type="checkbox" data-oi="' + i + '" data-f="buyout"' + (o.buyout ? " checked" : "") + '> New employer buys out my notice period</label>' +
+      '</div></details>' +
+      '<details class="acc"><summary>Insurance &amp; hours</summary><div class="grid g2" style="gap:0 12px">' +
+        F("insSelf", "Sum insured — self (₹)", o.insSelf, 100000) +
+        F("insFamily", "Sum insured — family (₹)", o.insFamily, 100000) +
+        F("insParents", "Sum insured — parents (₹)", o.insParents, 100000) +
+        F("premium", "Annual premium (₹)", o.premium, 1000) +
+        '<label class="fld"><span class="lbl">Premium paid by</span><select data-oi="' + i + '" data-f="premiumBy">' +
+          '<option value="employer"' + (o.premiumBy === "employer" ? " selected" : "") + '>Employer</option>' +
+          '<option value="employee"' + (o.premiumBy === "employee" ? " selected" : "") + '>Me</option>' +
+        '</select></label>' +
+        F("hours", "Working hours per week", o.hours, 1, 'min="10" max="100"') +
+        F("commute", "One-way commute (minutes)", o.commute, 5, 'min="0" max="300"') +
+      '</div></details>' +
+      '<details class="acc"><summary>Rate this offer 1–10</summary><div>' +
+        FACTORS.map(f =>
+          '<label class="fld" style="margin-bottom:6px"><div class="range-row"><span class="lbl">' + f.label + '</span>' +
+          '<span class="range-val" data-rv="' + i + "-" + f.key + '">' + o.ratings[f.key] + '</span></div>' +
+          '<input type="range" min="1" max="10" step="1" value="' + o.ratings[f.key] + '" data-oi="' + i + '" data-rating="' + f.key + '"></label>').join("") +
+      '</div></details>';
+    box.appendChild(c);
+  });
+  box.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", e => {
+    const i = +e.target.dataset.oi, f = e.target.dataset.f;
+    const v = e.target.type === "checkbox" ? e.target.checked
+            : (e.target.type === "number" ? safe(e.target.value) : e.target.value);
+    offers[i][f] = v;
+    if (f === "city" && CITY_CONFIG[v]) {           // keep the state in step with the city
+      offers[i].state = CITY_CONFIG[v].state;
+      const sel = box.querySelector('[data-oi="' + i + '"][data-f="state"]'); if (sel) sel.value = offers[i].state;
+    }
+    renderComparison();
+  }));
+  box.querySelectorAll("[data-rating]").forEach(inp => inp.addEventListener("input", e => {
+    const i = +e.target.dataset.oi, k = e.target.dataset.rating;
+    offers[i].ratings[k] = +e.target.value;
+    const lab = box.querySelector('[data-rv="' + i + "-" + k + '"]'); if (lab) lab.textContent = e.target.value;
+    renderComparison();
+  }));
+  box.querySelectorAll("[data-rmoffer]").forEach(b => b.addEventListener("click", e => {
+    if (offers.length <= 2) return;
+    offers.splice(+e.target.dataset.rmoffer, 1); renderOfferCards(); renderComparison();
+  }));
+}
+
+function renderWeights(){
+  const box = $("weightBox"); box.innerHTML = "";
+  FACTORS.forEach(f => {
+    const l = el("label", "fld");
+    l.style.marginBottom = "8px";
+    l.innerHTML = '<div class="range-row"><span class="lbl">' + f.label + '</span><span class="range-val" data-wv="' + f.key + '">' + weights[f.key] + '</span></div>' +
+      '<input type="range" min="0" max="10" step="1" value="' + weights[f.key] + '" data-weight="' + f.key + '">';
+    box.appendChild(l);
+  });
+  box.querySelectorAll("[data-weight]").forEach(i => i.addEventListener("input", e => {
+    weights[e.target.dataset.weight] = +e.target.value;
+    box.querySelector('[data-wv="' + e.target.dataset.weight + '"]').textContent = e.target.value;
+    renderComparison();
+  }));
+}
+
+/* ---- The comparison itself ----------------------------------------- */
+const CMP_ROWS = [
+  { g:"Money" },
+  { l:"Fixed CTC",                    v:e => e.o.ctc,                 f:inr,       b:"high" },
+  { l:"Monthly in-hand",              v:e => e.d.monthlyInhand,       f:inr,       b:"high" },
+  { l:"Annual in-hand",               v:e => e.d.annualInhandFixed,   f:inr,       b:"high" },
+  { l:"Tax regime applied",           v:e => e.d.regimeLabel,         f:x => x,    b:"none" },
+  { l:"Annual income tax",            v:e => e.d.taxAll.total,        f:inr,       b:"low"  },
+  { l:"Variable (expected, net)",     v:e => e.d.variableNet,         f:inr,       b:"high" },
+  { l:"Joining bonus in year 1 (net)",v:e => e.joinY1,                f:inr,       b:"high" },
+  { l:"Equity vesting in year 1",     v:e => e.netEquityY1,           f:inr,       b:"high" },
+  { l:"Total equity (discounted, net)",v:e => e.totalEquityNet,       f:inr,       b:"high" },
+  { l:"Relocation, net",              v:e => safe(e.o.relocAllow) - safe(e.o.relocCost), f:inr, b:"high" },
+  { l:"Notice-period cost",           v:e => -e.noticeCost,           f:inr,       b:"high" },
+  { l:"Perks you valued",             v:e => safe(e.o.perks),         f:inr,       b:"high" },
+  { l:"Insurance — sum insured",      v:e => e.sumInsured,            f:inr,       b:"high" },
+  { l:"Insurance — premium value",    v:e => e.insValue,              f:inr,       b:"high" },
+  { l:"Retirement corpus added / yr", v:e => e.d.retirementAdded,     f:inr,       b:"high" },
+  { g:"Adjusted for reality" },
+  { l:"True Year-1 Value",            v:e => e.year1,                 f:inr,       b:"high" },
+  { l:"Three-year total",             v:e => e.threeYear,             f:inrShort,  b:"high" },
+  { l:"Purchasing-power in-hand",     v:e => e.adjInhand,             f:inr,       b:"high" },
+  { l:"Effective hourly rate",        v:e => e.hourly,                f:x => inr(x, 0) + "/hr", b:"high" },
+  { l:"Hours per week + commute",     v:e => clamp(e.o.hours,1,100) + clamp(e.o.commute,0,300)*2*5/60, f:x => x.toFixed(1) + " hrs", b:"low" },
+  { g:"Preference" },
+  { l:"Weighted score /100",          v:e => e.score,                 f:x => x.toFixed(1), b:"high" }
+];
+
+function renderComparison(){
+  const opts = cmpOpts();
+  const ev = offers.map(o => evalOffer(o, opts));
+  const T = chartTheme();
+  const n = ev.length;
+
+  // --- comparison table
+  let html = '<div class="card"><div class="card-head"><h2>Side by side</h2><span class="muted" style="font-size:.8rem">★ marks the better figure in each row</span></div>' +
+    '<div class="tbl-scroll"><table class="pin-first"><thead><tr><th>Factor</th>' +
+    ev.map((e, i) => '<th class="oc' + (i + 1) + '">' + esc(e.o.name) + '<br><span class="muted" style="font-weight:400;font-size:.72rem">' + esc(e.o.city) + '</span></th>').join("") +
+    '</tr></thead><tbody>';
+  CMP_ROWS.forEach(row => {
+    if (row.g){
+      html += '<tr><td colspan="' + (n + 1) + '" style="background:var(--cream);font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.05em">' + row.g + '</td></tr>';
+      return;
+    }
+    const vals = ev.map(row.v);
+    let winIdx = -1;
+    if (row.b === "high") winIdx = vals.indexOf(Math.max(...vals.map(safe)));
+    if (row.b === "low")  winIdx = vals.indexOf(Math.min(...vals.map(safe)));
+    const allSame = vals.every(v => v === vals[0]);
+    html += '<tr><td>' + row.l + '</td>' + vals.map((v, i) =>
+      '<td class="num' + (i === winIdx && !allSame ? " win" : "") + '">' + row.f(v) + '</td>').join("") + '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+
+  // --- verdict
+  const bestMoney = ev.reduce((a, b) => b.year1 > a.year1 ? b : a);
+  const bestScore = ev.reduce((a, b) => b.score > a.score ? b : a);
+  const bestHour  = ev.reduce((a, b) => b.hourly > a.hourly ? b : a);
+  const best3     = ev.reduce((a, b) => b.threeYear > a.threeYear ? b : a);
+  html += '<div class="card"><div class="card-head"><h2>🏁 The verdict</h2></div><div class="grid g2">' +
+    '<div class="stat"><div class="stat-label">Wins on money (Year 1)</div><div class="stat-value">' + esc(bestMoney.o.name) + '</div><div class="stat-note num">' + inr(bestMoney.year1) + ' true value</div></div>' +
+    '<div class="stat"><div class="stat-label">Wins on what you said you value</div><div class="stat-value">' + esc(bestScore.o.name) + '</div><div class="stat-note num">' + bestScore.score.toFixed(1) + ' / 100 weighted</div></div>' +
+    '<div class="stat"><div class="stat-label">Wins per hour of your life</div><div class="stat-value">' + esc(bestHour.o.name) + '</div><div class="stat-note num">' + inr(bestHour.hourly) + ' an hour, commute included</div></div>' +
+    '<div class="stat"><div class="stat-label">Wins over three years</div><div class="stat-value">' + esc(best3.o.name) + '</div><div class="stat-note num">' + inrShort(best3.threeYear) + ' cumulative</div></div>' +
+    '</div><div class="notice good" style="margin-top:12px">' + verdictSentence(bestMoney, bestScore, bestHour) + '</div></div>';
+
+  // --- break-even negotiation numbers
+  html += '<div class="card"><div class="card-head"><h2>💬 Your negotiation number</h2></div>' +
+    '<p class="muted" style="font-size:.86rem">How much more fixed CTC each other offer needs before it matches <b>' + esc(bestMoney.o.name) + '</b> on True Year-1 Value. Take this figure into the call.</p>';
+  ev.forEach(e => {
+    if (e === bestMoney) return;
+    const need = breakEvenCtc(e, bestMoney.year1, opts);
+    html += '<div class="spread"><span><b>' + esc(e.o.name) + '</b> must raise its fixed CTC by</span><b class="num amb">' +
+      (need === null ? "more than this app will search" : inr(need) + " → " + inrShort(safe(e.o.ctc) + need)) + '</b></div>';
+  });
+  html += '</div>';
+
+  // --- charts
+  html += '<div class="grid g2">' +
+    '<div class="card"><div class="card-head"><h3>Where the money comes from</h3></div><div class="chart-box sm"><canvas id="chartBars"></canvas></div></div>' +
+    '<div class="card"><div class="card-head"><h3>What you said matters</h3></div><div class="chart-box sm"><canvas id="chartRadar"></canvas></div></div>' +
+    '</div>' +
+    '<div class="card"><div class="card-head"><h3>Three years out</h3><span class="muted" style="font-size:.8rem">at each offer\u2019s own expected hike</span></div><div class="chart-box sm"><canvas id="chartProj"></canvas></div></div>';
+
+  // --- cost of living note
+  const baseCity = opts.baseCity;
+  html += '<div class="card"><div class="card-head"><h3>🏙️ Same money, different city</h3></div>' +
+    ev.map(e => '<div class="spread"><span>' + inr(e.d.annualInhandFixed / 12) + ' a month in <b>' + esc(e.o.city) + '</b> buys what</span><b class="num">' +
+      inr(e.adjInhand / 12) + ' buys in ' + esc(baseCity) + '</b></div>').join("") +
+    '<div class="hint" style="margin-top:8px">Using the cost-of-living index in Settings. It is an estimate, and your own rent and lifestyle matter more than any index. Edit it to match what you know.</div></div>';
+
+  $("cmpResults").innerHTML = html;
+
+  // --- draw the charts now that the canvases exist
+  const palette = ["#0E7C86", "#C25E00", "#6C4BB6", "#B03060"];
+  makeChart("chartBars", {
+    type:"bar",
+    data:{ labels:["In-hand", "Variable (net)", "Equity yr 1", "Bonuses & perks"],
+      datasets: ev.map((e, i) => ({ label:e.o.name, backgroundColor:palette[i], borderRadius:4,
+        data:[ round(e.d.annualInhandFixed), round(e.d.variableNet), round(e.netEquityY1),
+               round(e.joinY1 + safe(e.o.perks) + e.insValue) ] })) },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:T.ink, boxWidth:12, font:{ size:11 } } },
+                tooltip:{ callbacks:{ label:c => c.dataset.label + ": " + inr(c.parsed.y) } } },
+      scales:{ x:{ ticks:{ color:T.muted, font:{ size:11 } }, grid:{ display:false } },
+               y:{ ticks:{ color:T.muted, callback:v => inrShort(v) }, grid:{ color:T.line } } } }
+  });
+  makeChart("chartRadar", {
+    type:"radar",
+    data:{ labels:FACTORS.map(f => f.label.split(" ")[0]),
+      datasets: ev.map((e, i) => ({ label:e.o.name, data:FACTORS.map(f => clamp(e.o.ratings[f.key], 0, 10) * clamp(weights[f.key], 0, 10) / 10),
+        borderColor:palette[i], backgroundColor:palette[i] + "22", pointRadius:2 })) },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:T.ink, boxWidth:12, font:{ size:11 } } },
+        tooltip:{ callbacks:{ label:c => c.dataset.label + ": weighted " + c.parsed.r.toFixed(1) + " / 10" } } },
+      scales:{ r:{ suggestedMin:0, suggestedMax:10, angleLines:{ color:T.line }, grid:{ color:T.line },
+                   pointLabels:{ color:T.muted, font:{ size:10 } }, ticks:{ display:false } } } }
+  });
+  makeChart("chartProj", {
+    type:"line",
+    data:{ labels:["Year 1", "Year 2", "Year 3"],
+      datasets: ev.map((e, i) => ({ label:e.o.name, data:e.proj.map(round), borderColor:palette[i],
+        backgroundColor:palette[i] + "18", tension:.3, fill:false, pointRadius:3 })) },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:T.ink, boxWidth:12, font:{ size:11 } } },
+        tooltip:{ callbacks:{ label:c => c.dataset.label + ": " + inr(c.parsed.y) } } },
+      scales:{ x:{ ticks:{ color:T.muted }, grid:{ display:false } },
+               y:{ ticks:{ color:T.muted, callback:v => inrShort(v) }, grid:{ color:T.line } } } }
+  });
+  saveState();
+}
+
+function verdictSentence(money, score, hour){
+  if (money.o === score.o && money.o === hour.o)
+    return "<b>" + esc(money.o.name) + "</b> wins on all three — money, your stated priorities, and money per hour of your life. There is no trade-off to agonise over here.";
+  if (money.o === score.o)
+    return "<b>" + esc(money.o.name) + "</b> wins on money and on your stated priorities, but <b>" + esc(hour.o.name) + "</b> pays more per hour — the trade-off is time, not rupees.";
+  const gap = money.year1 - score.year1;
+  return "<b>" + esc(money.o.name) + "</b> pays " + inr(Math.abs(gap)) + " more in year one, but <b>" + esc(score.o.name) + "</b> scores higher on what you said you value — so the question is whether that difference is worth " + inr(Math.abs(gap) / 12) + " a month to you.";
+}
+
+/** How much extra fixed CTC closes the gap to the leading offer? */
+function breakEvenCtc(e, targetYear1, opts){
+  if (e.year1 >= targetYear1) return 0;
+  let lo = 0, hi = Math.max(1000000, safe(e.o.ctc) * 3);
+  const test = add => evalOffer(Object.assign({}, e.o, { ctc: safe(e.o.ctc) + add }), opts).year1;
+  if (test(hi) < targetYear1) return null;
+  for (let i = 0; i < 32; i++){
+    const mid = (lo + hi) / 2;
+    if (test(mid) < targetYear1) lo = mid; else hi = mid;
+  }
+  return Math.round((lo + hi) / 2);
+}
+
+/* ==================================================================
+   ██  SAVE, LOAD & EXPORT  ██
+   ================================================================== */
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2200);
+}
+/** Any unreadable localStorage key is reset rather than allowed to crash the app. */
+function lsGet(key, fallback){
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const v = JSON.parse(raw);
+    if (v === null || typeof v !== "object") return fallback;
+    return v;
+  } catch (err){
+    console.warn("Resetting corrupted storage key:", key, err);
+    try { localStorage.removeItem(key); } catch (e){}
+    return fallback;
+  }
+}
+function lsSet(key, val){ try { localStorage.setItem(key, JSON.stringify(val)); } catch (e){ /* private mode, quota — carry on */ } }
+
+function saveState(){ lsSet(LS.state, { mode:MODE, offers, weights, base:$("i_baseCity") ? $("i_baseCity").value : "Mumbai" }); }
+
+function savedSets(){ const v = lsGet(LS.offers, { list:[] }); return Array.isArray(v.list) ? v.list : []; }
+function saveComparison(){
+  const name = prompt("Name this comparison", "My offers — " + new Date().toLocaleDateString("en-IN"));
+  if (!name) return;
+  const list = savedSets();
+  list.unshift({ id:Date.now(), name, date:new Date().toISOString(), offers:deepCopy(offers), weights:deepCopy(weights) });
+  lsSet(LS.offers, { list: list.slice(0, 40) });
+  renderHistory(); toast("Saved to this browser");
+}
+function renderHistory(){
+  const list = savedSets(), box = $("historyBox");
+  if (!list.length){
+    box.innerHTML =
+      '<div class="empty"><svg width="76" height="76" viewBox="0 0 76 76" fill="none" aria-hidden="true">' +
+      '<rect x="9" y="17" width="42" height="50" rx="6" fill="var(--cream)" stroke="var(--line)" stroke-width="2"/>' +
+      '<rect x="25" y="9" width="42" height="50" rx="6" fill="var(--card)" stroke="var(--charcoal)" stroke-width="2"/>' +
+      '<path d="M34 25h24M34 33h24M34 41h14" stroke="var(--ink-3)" stroke-width="2.4" stroke-linecap="round"/>' +
+      '<circle cx="55" cy="47" r="9" fill="var(--amber)"/><path d="M51.5 47l2.5 2.5 4.5-5" stroke="#0E0E10" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</svg><h3>Nothing saved yet</h3><p class="muted">Set up your offers above, then hit <b>Save this comparison</b>. It stays in this browser and goes nowhere else.</p></div>';
+    return;
+  }
+  box.innerHTML = '<div class="tbl-scroll"><table><thead><tr><th>Name</th><th>Offers</th><th>Saved</th><th></th></tr></thead><tbody>' +
+    list.map(s => '<tr><td>' + esc(s.name) + '</td><td class="num">' + s.offers.length + '</td><td>' +
+      new Date(s.date).toLocaleDateString("en-IN") + '</td><td style="text-align:right">' +
+      '<button class="btn ghost sm" data-load="' + s.id + '">Load</button> ' +
+      '<button class="btn ghost sm" data-dup="' + s.id + '">Duplicate</button> ' +
+      '<button class="btn danger sm" data-del2="' + s.id + '">Delete</button></td></tr>').join("") +
+    '</tbody></table></div>';
+  box.querySelectorAll("[data-load]").forEach(b => b.addEventListener("click", e => {
+    const s = savedSets().find(x => x.id == e.target.dataset.load); if (!s) return;
+    offers = deepCopy(s.offers); weights = deepCopy(s.weights);
+    renderOfferCards(); renderWeights(); renderComparison(); toast("Loaded " + s.name);
+  }));
+  box.querySelectorAll("[data-dup]").forEach(b => b.addEventListener("click", e => {
+    const list2 = savedSets(), s = list2.find(x => x.id == e.target.dataset.dup); if (!s) return;
+    list2.unshift(Object.assign({}, deepCopy(s), { id:Date.now(), name:s.name + " (copy)", date:new Date().toISOString() }));
+    lsSet(LS.offers, { list:list2 }); renderHistory();
+  }));
+  box.querySelectorAll("[data-del2]").forEach(b => b.addEventListener("click", e => {
+    lsSet(LS.offers, { list: savedSets().filter(x => x.id != e.target.dataset.del2) }); renderHistory();
+  }));
+}
+
+/* ---- Excel export --------------------------------------------------- */
+const INR_FMT = '"₹"#,##,##0.00';   // Indian grouping, inside Excel
+async function exportExcel(){
+  if (typeof ExcelJS === "undefined"){ toast("ExcelJS did not load — check your connection"); return; }
+  const opts = cmpOpts();
+  const ev = offers.map(o => evalOffer(o, opts));
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "SalaryLens"; wb.created = new Date();
+
+  const styleHeader = (ws, cols) => {
+    ws.getRow(1).font = { bold:true, color:{ argb:"FF0E0E10" } };
+    ws.getRow(1).fill = { type:"pattern", pattern:"solid", fgColor:{ argb:"FFF5B301" } };
+    ws.getRow(1).height = 20;
+    ws.views = [{ state:"frozen", ySplit:1 }];
+    ws.autoFilter = { from:{ row:1, column:1 }, to:{ row:1, column:cols } };
+  };
+
+  // ---- Summary
+  const s1 = wb.addWorksheet("Summary");
+  s1.columns = [{ header:"Metric", width:34 }].concat(ev.map(e => ({ header:e.o.name, width:20 })));
+  const sRows = [
+    ["Financial year", ...ev.map(() => "FY " + TAX_CONFIG.financialYear)],
+    ["City", ...ev.map(e => e.o.city)],
+    ["Tax regime applied", ...ev.map(e => e.d.regimeLabel)],
+    ["Fixed CTC", ...ev.map(e => safe(e.o.ctc))],
+    ["Gross salary", ...ev.map(e => e.d.grossFixed)],
+    ["Monthly in-hand", ...ev.map(e => e.d.monthlyInhand)],
+    ["Annual in-hand", ...ev.map(e => e.d.annualInhandFixed)],
+    ["Annual income tax", ...ev.map(e => e.d.taxAll.total)],
+    ["Employee PF (year)", ...ev.map(e => e.d.eePF)],
+    ["Professional tax (year)", ...ev.map(e => e.d.ptA)],
+    ["Variable, expected net", ...ev.map(e => e.d.variableNet)],
+    ["Joining bonus in year 1", ...ev.map(e => e.joinY1)],
+    ["Equity vesting year 1 (net)", ...ev.map(e => e.netEquityY1)],
+    ["Notice-period cost", ...ev.map(e => -e.noticeCost)],
+    ["Perks", ...ev.map(e => safe(e.o.perks))],
+    ["True Year-1 Value", ...ev.map(e => e.year1)],
+    ["Purchasing-power in-hand (" + opts.baseCity + ")", ...ev.map(e => e.adjInhand)],
+    ["Effective hourly rate", ...ev.map(e => e.hourly)],
+    ["Weighted score /100", ...ev.map(e => e.score)]
+  ];
+  sRows.forEach(r => s1.addRow(r));
+  styleHeader(s1, ev.length + 1);
+  s1.eachRow((row, i) => { if (i > 1) row.eachCell((c, col) => { if (col > 1 && typeof c.value === "number") c.numFmt = INR_FMT; }); });
+  s1.addRow([]);
+  s1.addRow(["Disclaimer", DISCLAIMER]);
+
+  // ---- Component breakdown, one sheet per offer
+  ev.forEach((e, idx) => {
+    const ws = wb.addWorksheet(("Breakup " + (idx + 1) + " " + e.o.name).slice(0, 30).replace(/[\\\/\?\*\[\]:]/g, " "));
+    ws.columns = [{ header:"Component", width:36 }, { header:"Monthly", width:16 }, { header:"Annual", width:18 }, { header:"Treatment", width:24 }];
+    e.d.comps.forEach(c => ws.addRow([ c.name, safe(c.annual) / 12, safe(c.annual),
+      c.side === "employer" ? "Employer contribution" : (c.treat === "exemptOld" ? "Exempt (old regime)" : "Taxable") ]));
+    const last = ws.rowCount;
+    ws.addRow([]);
+    const tot = ws.addRow(["TOTAL (= CTC)", { formula:"SUM(B2:B" + last + ")" }, { formula:"SUM(C2:C" + last + ")" }, ""]);
+    tot.font = { bold:true };
+    ws.addRow(["Monthly in-hand", e.d.monthlyInhand, e.d.annualInhandFixed, "After PF, PT and TDS"]).font = { bold:true };
+    styleHeader(ws, 4);
+    ws.eachRow((row, i) => { if (i > 1){ row.getCell(2).numFmt = INR_FMT; row.getCell(3).numFmt = INR_FMT; } });
+  });
+
+  // ---- Comparison
+  const s3 = wb.addWorksheet("Comparison");
+  s3.columns = [{ header:"Factor", width:34 }].concat(ev.map(e => ({ header:e.o.name, width:20 })));
+  CMP_ROWS.forEach(r => { if (r.g) s3.addRow([r.g.toUpperCase()]).font = { bold:true };
+                          else s3.addRow([r.l, ...ev.map(r.v)]); });
+  s3.addRow([]);
+  FACTORS.forEach(f => s3.addRow([f.label + "  (weight " + weights[f.key] + ")", ...ev.map(e => e.o.ratings[f.key])]));
+  styleHeader(s3, ev.length + 1);
+  s3.eachRow((row, i) => { if (i > 1) row.eachCell((c, col) => { if (col > 1 && typeof c.value === "number" && Math.abs(c.value) > 100) c.numFmt = INR_FMT; }); });
+
+  // ---- Three-year projection
+  const s4 = wb.addWorksheet("Three-Year Projection");
+  s4.columns = [{ header:"Offer", width:26 }, { header:"Year 1", width:18 }, { header:"Year 2", width:18 }, { header:"Year 3", width:18 }, { header:"3-year total", width:20 }];
+  ev.forEach((e, i) => {
+    const r = i + 2;
+    s4.addRow([e.o.name, e.proj[0], e.proj[1], e.proj[2], { formula:"SUM(B" + r + ":D" + r + ")" }]);
+  });
+  const tr = s4.addRow(["All offers", { formula:"SUM(B2:B" + (ev.length + 1) + ")" }, { formula:"SUM(C2:C" + (ev.length + 1) + ")" }, { formula:"SUM(D2:D" + (ev.length + 1) + ")" }, { formula:"SUM(E2:E" + (ev.length + 1) + ")" }]);
+  tr.font = { bold:true };
+  styleHeader(s4, 5);
+  s4.eachRow((row, i) => { if (i > 1) [2,3,4,5].forEach(c => row.getCell(c).numFmt = INR_FMT); });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "SalaryLens-comparison-" + new Date().toISOString().slice(0, 10) + ".xlsx";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast("Excel workbook downloaded");
+}
+
+/* ==================================================================
+   ██  SETTINGS PANEL  ██
+   Everything here writes straight into the config objects above.
+   ================================================================== */
+const CFG_TABS = {
+  "Income tax": () => TAX_CONFIG, "Provident fund": () => PF_CONFIG, "Professional tax": () => PT_CONFIG,
+  "Cities": () => CITY_CONFIG, "Gratuity": () => GRATUITY_CONFIG, "Allowances": () => ALLOWANCE_CONFIG
+};
+let cfgTab = "Income tax";
+
+const QUICK = [
+  { l:"Financial year",              get:() => TAX_CONFIG.financialYear, set:v => TAX_CONFIG.financialYear = v, type:"text" },
+  { l:"Cess %",                      get:() => TAX_CONFIG.cess * 100, set:v => TAX_CONFIG.cess = v / 100, step:.5 },
+  { l:"Standard deduction — new",    get:() => TAX_CONFIG.regimes.new.standardDeduction, set:v => TAX_CONFIG.regimes.new.standardDeduction = v, step:5000 },
+  { l:"Standard deduction — old",    get:() => TAX_CONFIG.regimes.old.standardDeduction, set:v => TAX_CONFIG.regimes.old.standardDeduction = v, step:5000 },
+  { l:"87A rebate limit — new",      get:() => TAX_CONFIG.regimes.new.rebate.limit, set:v => TAX_CONFIG.regimes.new.rebate.limit = v, step:50000 },
+  { l:"87A rebate cap — new",        get:() => TAX_CONFIG.regimes.new.rebate.max, set:v => TAX_CONFIG.regimes.new.rebate.max = v, step:5000 },
+  { l:"87A rebate limit — old",      get:() => TAX_CONFIG.regimes.old.rebate.limit, set:v => TAX_CONFIG.regimes.old.rebate.limit = v, step:50000 },
+  { l:"Section 80C ceiling",         get:() => TAX_CONFIG.limits.sec80C, set:v => TAX_CONFIG.limits.sec80C = v, step:10000 },
+  { l:"Section 80D ceiling",         get:() => TAX_CONFIG.limits.sec80D, set:v => TAX_CONFIG.limits.sec80D = v, step:5000 },
+  { l:"80CCD(1B) ceiling",           get:() => TAX_CONFIG.limits.sec80CCD1B, set:v => TAX_CONFIG.limits.sec80CCD1B = v, step:5000 },
+  { l:"Home loan interest cap",      get:() => TAX_CONFIG.limits.homeLoanInterest, set:v => TAX_CONFIG.limits.homeLoanInterest = v, step:50000 },
+  { l:"PF employee rate %",          get:() => PF_CONFIG.employeeRate * 100, set:v => PF_CONFIG.employeeRate = v / 100, step:.5 },
+  { l:"PF employer rate %",          get:() => PF_CONFIG.employerRate * 100, set:v => PF_CONFIG.employerRate = v / 100, step:.5 },
+  { l:"PF wage ceiling (monthly)",   get:() => PF_CONFIG.wageCeiling, set:v => PF_CONFIG.wageCeiling = v, step:1000 },
+  { l:"EPF interest %",              get:() => PF_CONFIG.interestRate * 100, set:v => PF_CONFIG.interestRate = v / 100, step:.05 },
+  { l:"ESI gross limit (monthly)",   get:() => PF_CONFIG.esi.grossMonthlyLimit, set:v => PF_CONFIG.esi.grossMonthlyLimit = v, step:1000 },
+  { l:"Labour Welfare Fund (yearly)",get:() => PF_CONFIG.labourWelfareFundAnnual, set:v => PF_CONFIG.labourWelfareFundAnnual = v, step:12 },
+  { l:"Gratuity exemption cap",      get:() => GRATUITY_CONFIG.exemptionCap, set:v => GRATUITY_CONFIG.exemptionCap = v, step:100000 },
+  { l:"Gratuity eligibility (years)",get:() => GRATUITY_CONFIG.eligibilityYears, set:v => GRATUITY_CONFIG.eligibilityYears = v, step:1 },
+  { l:"Gratuity provision % of Basic",get:() => GRATUITY_CONFIG.ctcProvisionRate * 100, set:v => GRATUITY_CONFIG.ctcProvisionRate = v / 100, step:.01 }
+];
+
+function renderSettings(){
+  const q = $("quickSettings"); q.innerHTML = "";
+  QUICK.forEach((item, i) => {
+    const l = el("label", "fld");
+    l.innerHTML = '<span class="lbl">' + item.l + '</span><input type="' + (item.type === "text" ? "text" : "number") +
+      '" value="' + item.get() + '" step="' + (item.step || 1) + '" data-q="' + i + '">';
+    q.appendChild(l);
+  });
+  q.querySelectorAll("[data-q]").forEach(inp => inp.addEventListener("change", e => {
+    const item = QUICK[+e.target.dataset.q];
+    item.set(item.type === "text" ? e.target.value : safe(e.target.value));
+    persistConfig(); redrawEverything();
+  }));
+
+  const c = $("colSettings"); c.innerHTML = "";
+  Object.keys(CITY_CONFIG).forEach(city => {
+    const l = el("label", "fld");
+    l.innerHTML = '<span class="lbl">' + esc(city) + (CITY_CONFIG[city].metro ? " · metro" : "") + '</span>' +
+      '<input type="number" value="' + CITY_CONFIG[city].col + '" min="1" max="300" data-col="' + esc(city) + '">';
+    c.appendChild(l);
+  });
+  c.querySelectorAll("[data-col]").forEach(inp => inp.addEventListener("change", e => {
+    CITY_CONFIG[e.target.dataset.col].col = clamp(safe(e.target.value), 1, 500);
+    persistConfig(); redrawEverything();
+  }));
+
+  const p = $("ptSettings"); p.innerHTML = "";
+  Object.keys(PT_CONFIG).forEach(st => {
+    const slabs = PT_CONFIG[st].slabs, top = slabs[slabs.length - 1];
+    const l = el("label", "fld");
+    l.innerHTML = '<span class="lbl">' + esc(st) + '</span><input type="number" value="' + safe(top.amt) + '" min="0" step="5" data-pt="' + esc(st) + '">';
+    p.appendChild(l);
+  });
+  p.querySelectorAll("[data-pt]").forEach(inp => inp.addEventListener("change", e => {
+    const st = e.target.dataset.pt, slabs = PT_CONFIG[st].slabs;
+    slabs[slabs.length - 1].amt = Math.max(0, safe(e.target.value));
+    persistConfig(); redrawEverything();
+  }));
+
+  const t = $("cfgTabs"); t.innerHTML = "";
+  Object.keys(CFG_TABS).forEach(k => {
+    const b = el("button", "chip" + (k === cfgTab ? " active" : ""), k);
+    b.addEventListener("click", () => { cfgTab = k; renderSettings(); });
+    t.appendChild(b);
+  });
+  $("cfgArea").value = JSON.stringify(CFG_TABS[cfgTab](), null, 2);
+  $("cfgErr").classList.remove("show");
+}
+
+function applyConfigJson(){
+  let parsed;
+  try { parsed = JSON.parse($("cfgArea").value); }
+  catch (err){ $("cfgErr").textContent = "That is not valid JSON: " + err.message; $("cfgErr").classList.add("show"); return; }
+  const target = { "Income tax":"TAX", "Provident fund":"PF", "Professional tax":"PT", "Cities":"CITY", "Gratuity":"GRAT", "Allowances":"ALLOW" }[cfgTab];
+  if (target === "TAX")  TAX_CONFIG = parsed;
+  if (target === "PF")   PF_CONFIG = parsed;
+  if (target === "PT")   PT_CONFIG = parsed;
+  if (target === "CITY") CITY_CONFIG = parsed;
+  if (target === "GRAT") GRATUITY_CONFIG = parsed;
+  if (target === "ALLOW")ALLOWANCE_CONFIG = parsed;
+  persistConfig(); rebuildSelects(); renderSettings(); redrawEverything();
+  toast("Applied");
+}
+function persistConfig(){
+  lsSet(LS.cfg, { TAX_CONFIG, PF_CONFIG, PT_CONFIG, CITY_CONFIG, GRATUITY_CONFIG, ALLOWANCE_CONFIG });
+  $("fyChip").textContent = "FY " + TAX_CONFIG.financialYear;
+  $("fyInline").textContent = TAX_CONFIG.financialYear;
+  $("fyNote").innerHTML = "Financial year <b>FY " + esc(TAX_CONFIG.financialYear) + "</b> (April–March). Slabs and limits are seeded from published rules. Verify against incometax.gov.in or your payroll team before making decisions.";
+}
+function loadConfig(){
+  const c = lsGet(LS.cfg, null);
+  if (!c) return;
+  try {
+    if (c.TAX_CONFIG && c.TAX_CONFIG.regimes) TAX_CONFIG = c.TAX_CONFIG;
+    if (c.PF_CONFIG && c.PF_CONFIG.esi) PF_CONFIG = c.PF_CONFIG;
+    if (c.PT_CONFIG) PT_CONFIG = c.PT_CONFIG;
+    if (c.CITY_CONFIG) CITY_CONFIG = c.CITY_CONFIG;
+    if (c.GRATUITY_CONFIG) GRATUITY_CONFIG = c.GRATUITY_CONFIG;
+    if (c.ALLOWANCE_CONFIG) ALLOWANCE_CONFIG = c.ALLOWANCE_CONFIG;
+  } catch (e){ localStorage.removeItem(LS.cfg); }
+}
+function resetConfig(){
+  TAX_CONFIG = deepCopy(DEFAULT_TAX_CONFIG); PF_CONFIG = deepCopy(DEFAULT_PF_CONFIG);
+  PT_CONFIG = deepCopy(DEFAULT_PT_CONFIG); CITY_CONFIG = deepCopy(DEFAULT_CITY_CONFIG);
+  GRATUITY_CONFIG = deepCopy(DEFAULT_GRATUITY_CONFIG); ALLOWANCE_CONFIG = deepCopy(DEFAULT_ALLOWANCE_CONFIG);
+  persistConfig(); rebuildSelects(); buildAllowanceBox(); renderSettings(); redrawEverything();
+  toast("Back to the seeded defaults");
+}
+function redrawEverything(){ refresh(); if (offers.length) renderComparison(); }
+
+function rebuildSelects(){
+  const keepCity = $("i_city").value || "Mumbai", keepState = $("i_state").value || "Maharashtra";
+  fillSelect("i_city", cityNames(), keepCity);
+  fillSelect("i_cityB", cityNames(), $("i_cityB").value || keepCity);
+  fillSelect("i_state", stateNames(), keepState);
+  fillSelect("i_stateB", stateNames(), $("i_stateB").value || keepState);
+  fillSelect("i_baseCity", cityNames(), $("i_baseCity").value || "Mumbai");
+}
+
+/* ==================================================================
+   ██  READING AN OFFER LETTER PDF  ██
+   ------------------------------------------------------------------
+   Everything here runs inside this browser tab. The PDF is read with
+   pdf.js from an ArrayBuffer in memory; no file is ever sent anywhere.
+
+   The parser is a best-effort reader, not magic. Offer letters have no
+   standard format, so it finds what it can and shows you the result for
+   correction before anything is applied. Anything it could not find is
+   listed plainly rather than quietly guessed.
+   ================================================================== */
+const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+let pdfWorkerReady = false;
+let importDrafts = [];
+
+async function ensurePdfWorker(){
+  if (pdfWorkerReady) return;
+  if (typeof pdfjsLib === "undefined") throw new Error("The PDF reader did not load. Check your internet connection and reload the page.");
+  try {
+    // Fetch the worker and run it from a blob, so this also works from file://
+    const res = await fetch(PDFJS_WORKER);
+    const blob = await res.blob();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(blob);
+  } catch (e){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  }
+  pdfWorkerReady = true;
+}
+
+/** Pull the text out of a PDF, one line per visual row. */
+async function pdfToLines(file){
+  await ensurePdfWorker();
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  const lines = [];
+  for (let p = 1; p <= doc.numPages; p++){
+    const page = await doc.getPage(p);
+    const content = await page.getTextContent();
+    // Group text items that share a baseline, then read them left to right
+    const rows = new Map();
+    content.items.forEach(it => {
+      if (!it.str || !it.str.trim()) return;
+      const y = Math.round(it.transform[5]);
+      let bucket = null;
+      for (const key of rows.keys()) if (Math.abs(key - y) <= 2){ bucket = key; break; }
+      if (bucket === null){ bucket = y; rows.set(bucket, []); }
+      rows.get(bucket).push({ x: it.transform[4], s: it.str });
+    });
+    [...rows.entries()].sort((a, b) => b[0] - a[0]).forEach(([, items]) => {
+      // A wide horizontal gap means a separate column, so mark it with a double
+      // space. Single spaces elsewhere keep ordinary sentences readable.
+      const sorted = items.sort((a, b) => a.x - b.x);
+      let line = "";
+      sorted.forEach((it, i) => {
+        if (i > 0){
+          const prev = sorted[i - 1];
+          const gap = it.x - (prev.x + prev.s.length * 4.2);
+          line += gap > 14 ? "  " : " ";
+        }
+        line += it.s;
+      });
+      line = line.replace(/[ \t]{3,}/g, "  ").trim();
+      if (line) lines.push(line);
+    });
+  }
+  try { doc.destroy(); } catch (e){}
+  return lines;
+}
+
+/** "9,60,000.00" or "₹ 9,60,000" → 960000. Returns null when there is no number. */
+function parseAmt(str){
+  if (!str) return null;
+  const cleaned = String(str).replace(/[₹\s]/g, "").replace(/,/g, "");
+  const v = parseFloat(cleaned);
+  return Number.isFinite(v) ? v : null;
+}
+function firstAmt(text, re){
+  const m = re.exec(text);
+  if (!m) return null;
+  for (let i = 1; i < m.length; i++) if (m[i] !== undefined){ const v = parseAmt(m[i]); if (v !== null) return v; }
+  return null;
+}
+function firstInt(text, re){
+  const m = re.exec(text);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/* Which component is this row of the salary table? Order matters —
+   the first pattern that matches wins, so put specific before general. */
+const COMP_PATTERNS = [
+  { key:"ctc",      re:/total cost to company|^total ctc|^annual ctc|^cost to company/i },
+  { key:"basic",    re:/basic salary|^basic\b/i },
+  { key:"hra",      re:/house rent|^hra\b/i },
+  { key:"erpf",     re:/(employer|company).{0,25}(provident|pf)|(provident|pf).{0,20}(employer|company)/i },
+  { key:"pfadm",    re:/pf admin|administration charge/i },
+  { key:"ernps",    re:/nps|national pension/i },
+  { key:"grat",     re:/gratuity/i },
+  { key:"esi",      re:/\besi\b|employee state insurance/i },
+  { key:"ins",      re:/insurance|mediclaim|medical (premium|cover)/i },
+  { key:"variable", re:/variable|performance bonus|annual bonus|incentive|performance pay/i },
+  { key:"lta",      re:/leave travel/i },
+  { key:"food",     re:/food|meal card|beverage/i },
+  { key:"telecom",  re:/telephone|internet|communication|mobile/i },
+  { key:"fuel",     re:/fuel|driver|car allowance/i },
+  { key:"profdev",  re:/professional development|learning allowance/i },
+  { key:"books",    re:/books|periodical/i },
+  { key:"conveyance",re:/conveyance|transport allowance/i },
+  { key:"special",  re:/special allowance|other allowance|flexible benefit/i }
+];
+const EMPLOYER_KEYS = ["erpf", "pfadm", "ernps", "grat", "ins"];
+const EXEMPT_KEYS   = ["lta", "food", "telecom", "fuel", "profdev", "books"];
+
+/**
+ * Read one offer letter into an offer object.
+ * Salary components come from table rows — a label followed by one or two
+ * numbers, with the larger of the two taken as the annual figure. Everything
+ * else (bonuses, equity, notice, commute) is pulled from the prose.
+ */
+function parseOfferLetter(lines, filename){
+  const text = lines.join("\n");
+  const flat = text.replace(/\n/g, " ");
+  const found = {}, components = [];
+  const missing = [];
+
+  // --- salary table rows ---
+  const rowRe = /^(.*?[A-Za-z].*?)\s+₹?\s*([\d][\d,]*(?:\.\d+)?)(?:\s+₹?\s*([\d][\d,]*(?:\.\d+)?))?$/;
+  lines.forEach(line => {
+    const m = rowRe.exec(line.trim());
+    if (!m) return;
+    const label = m[1].trim();
+    if (label.length > 70) return;                       // that is a sentence, not a table row
+    const a = parseAmt(m[2]), b = m[3] !== undefined ? parseAmt(m[3]) : null;
+    const annual = Math.max(a === null ? 0 : a, b === null ? 0 : b);
+    if (!Number.isFinite(annual) || annual < 100) return;
+    for (const pat of COMP_PATTERNS){
+      if (pat.re.test(label)){
+        if (found[pat.key] !== undefined) return;        // keep the first occurrence
+        if (pat.key === "ctc" && annual < 10000) return;
+        found[pat.key] = annual;
+        if (pat.key !== "ctc") components.push({
+          key: pat.key, name: label, annual: annual,
+          treat: EMPLOYER_KEYS.includes(pat.key) ? "employer"
+               : (EXEMPT_KEYS.includes(pat.key) ? "exemptOld" : "taxable")
+        });
+        return;
+      }
+    }
+  });
+
+  // --- CTC fallback: a rupee figure sitting next to the words "cost to company" ---
+  if (found.ctc === undefined){
+    const v = firstAmt(flat, /cost to company[^₹\d]{0,40}₹?\s*([\d][\d,]{5,})/i);
+    if (v) found.ctc = v;
+  }
+  if (found.ctc === undefined && components.length){
+    found.ctc = components.reduce((a, c) => a + c.annual, 0);
+    missing.push("Total CTC was not stated, so it was added up from the components.");
+  }
+
+  // --- city ---
+  const CITY_ALIASES = {
+    "Mumbai":["mumbai","bombay","navi mumbai","thane","bkc"],
+    "Delhi NCR":["delhi","gurgaon","gurugram","noida","ncr","faridabad"],
+    "Bengaluru":["bengaluru","bangalore"],
+    "Pune":["pune","hinjewadi","hinjawadi"],
+    "Hyderabad":["hyderabad","secunderabad","gachibowli"],
+    "Chennai":["chennai","madras","guindy"],
+    "Kolkata":["kolkata","calcutta"],
+    "Ahmedabad":["ahmedabad","gandhinagar"]
+  };
+  const workLine = (/place of work[^\n]*/i.exec(text) || /location[^\n]*/i.exec(text) || [""])[0];
+  const hay = (workLine + " " + flat).toLowerCase();
+  let city = null, bestAt = Infinity;
+  for (const c in CITY_ALIASES){
+    for (const alias of CITY_ALIASES[c]){
+      const at = hay.indexOf(alias);
+      if (at >= 0 && at < bestAt){ bestAt = at; city = c; }
+    }
+  }
+  if (!city){ city = "Tier-2 city"; missing.push("City was not recognised — set it yourself."); }
+
+  // --- percentages, derived from the components rather than guessed ---
+  const ctc   = found.ctc || 0;
+  const basic = found.basic || 0;
+  const basicPct = ctc > 0 && basic > 0 ? (basic / ctc) * 100 : 40;
+  const hraPct   = basic > 0 && found.hra ? (found.hra / basic) * 100 : ((CITY_CONFIG[city] || {}).metro ? 50 : 40);
+  const varPct   = ctc > 0 && found.variable ? (found.variable / ctc) * 100 : 0;
+  if (!basic) missing.push("Basic Salary was not found — the basic percentage is a default.");
+
+  // --- the prose ---
+  const joining   = firstAmt(flat, /joining bonus[^.]{0,80}?₹\s*([\d][\d,]*)/i)
+                 || firstAmt(flat, /₹\s*([\d][\d,]*)[^.]{0,40}joining bonus/i);
+  const clawback  = firstInt(flat, /(?:repayable|refundable|clawback|claw-back)[^.]{0,90}?(\d{1,2})\s*months/i);
+  const retention = firstAmt(flat, /retention bonus[^.]{0,80}?₹\s*([\d][\d,]*)/i)
+                 || firstAmt(flat, /₹\s*([\d][\d,]*)[^.]{0,40}retention bonus/i);
+  const retMonths = firstInt(flat, /retention bonus[^.]{0,120}?completion of (\d{1,3})\s*months/i);
+  const equity    = firstAmt(flat, /(?:esop|rsu|stock option|options|equity)[^.]{0,140}?₹\s*([\d][\d,]{5,})/i);
+  let vestYears   = firstInt(flat, /(\d)\s*[-–]?\s*year vesting|vesting (?:over|period of) (\d)\s*years/i);
+  if (!vestYears && /four[- ]year vesting/i.test(flat)) vestYears = 4;
+  if (!vestYears && /three[- ]year vesting/i.test(flat)) vestYears = 3;
+  const cliff     = firstInt(flat, /(\d{1,2})\s*[-–]?\s*month cliff|cliff of (\d{1,2})\s*months/i);
+  const noticeDays= firstInt(flat, /notice period[^.]{0,60}?(\d{2,3})\s*days/i) || firstInt(flat, /(\d{2,3})\s*days[^.]{0,40}resignation/i);
+  const relocAllow= firstAmt(flat, /₹\s*([\d][\d,]*)\s*relocation allowance/i)
+                 || firstAmt(flat, /relocation allowance[^.]{0,60}?₹\s*([\d][\d,]*)/i);
+  const relocCost = firstAmt(flat, /(?:relocation cost|cost to you|estimate)[^.]{0,80}?₹\s*([\d][\d,]*)[^.]{0,60}move/i)
+                 || firstAmt(flat, /₹\s*([\d][\d,]*)\s*to move/i);
+  const rent      = firstAmt(flat, /rent[^.]{0,140}?₹\s*([\d][\d,]*)\s*a month/i)
+                 || firstAmt(flat, /₹\s*([\d][\d,]*)\s*a month[^.]{0,40}rent/i);
+  const commute   = firstInt(flat, /(\d{1,3})\s*minutes each way/i) || firstInt(flat, /commute[^.]{0,60}?(\d{1,3})\s*minutes/i);
+  const sumIns    = firstAmt(flat, /₹\s*([\d][\d,]*)\s*floater/i) || firstAmt(flat, /sum insured[^.]{0,40}?₹\s*([\d][\d,]*)/i);
+  const parentIns = firstAmt(flat, /₹\s*([\d][\d,]*)\s*(?:cover|floater)[^.]{0,40}parents/i);
+  const perks     = firstAmt(flat, /valu\w*[^.]{0,30}?\bat (?:about|roughly|around)\s*₹\s*([\d][\d,]*)/i);
+
+  // ranges like "50–55 hours a week" or "6–8% increment" → take the midpoint
+  function midRange(re, fallback){
+    const m = re.exec(flat);
+    if (!m) return fallback;
+    const a = parseFloat(m[1]), b = m[2] !== undefined ? parseFloat(m[2]) : null;
+    if (!Number.isFinite(a)) return fallback;
+    return b !== null && Number.isFinite(b) ? (a + b) / 2 : a;
+  }
+  const hours   = midRange(/(\d{2})\s*(?:[–-]\s*(\d{2}))?\s*hours a week/i, null)
+               || midRange(/(\d{2})\s*[–-]\s*(\d{2})\s*hours\b/i, null)
+               || midRange(/(?:average|averages|typically|normal)[^.]{0,30}?(\d{2})\s*(?:[–-]\s*(\d{2}))?\s*hours/i, null);
+  const hike    = midRange(/(\d{1,2})\s*[–-]\s*(\d{1,2})\s*%[^.]{0,40}(?:increment|hike|rating|performer)/i, null)
+               || midRange(/(?:increment|hike)[^.]{0,40}?(\d{1,2})\s*[–-]\s*(\d{1,2})\s*%/i, null);
+  const payout  = midRange(/(\d{2,3})\s*(?:[–-]\s*(\d{2,3}))?\s*%\s*of target/i, null);
+
+  const liquidity = !equity ? "listed"
+    : (/no committed buyback|illiquid|cannot be predicted|liquidity event/i.test(flat) ? "illiquid"
+    : (/buyback/i.test(flat) ? "buyback" : "listed"));
+  const buyout = /will buy out|buy[- ]?out is permitted|buyout is permitted|buy out up to/i.test(flat)
+              && !/buy[- ]?out is not permitted/i.test(flat);
+  const premiumBy = /premium[^.]{0,60}(borne by the company|paid by the (company|employer)|company[- ]paid)/i.test(flat) ? "employer" : "employee";
+
+  // --- a readable name for the offer: the company, or the file ---
+  let name = "";
+  const SUFFIX = /^(.{2,44}?(?:Private Limited|Pvt\.? Ltd\.?|Limited|Ltd\.?|LLP|Inc\.?|Corporation|Technologies|Analytics|Solutions|Services|Systems|Labs|Group))\b/i;
+  for (const l of lines.slice(0, 6)){
+    for (const part of l.split(/\s{2,}/)){
+      const m = SUFFIX.exec(part.trim());
+      if (m){ name = m[1].trim(); break; }
+    }
+    if (name) break;
+  }
+  if (!name){
+    const head = (lines[0] || "").split(/\s{2,}/)[0].trim();
+    if (head && head.length <= 46) name = head;
+  }
+  if (!name) name = filename.replace(/\.pdf$/i, "").replace(/[-_]/g, " ");
+  const title = (/Subject:\s*Offer of Employment\s*[—–-]\s*(.+)/i.exec(text) || [])[1] || "";
+
+  if (!rent) missing.push("Rent was not found — enter what you would pay there.");
+  if (!hours) missing.push("Weekly hours were not found.");
+  if (!commute) missing.push("Commute time was not found.");
+  if (equity && !/vesting/i.test(flat)) missing.push("An equity figure was found but no vesting schedule.");
+
+  const o = newOffer(0);
+  Object.assign(o, {
+    name: name.slice(0, 40),
+    ctc: Math.round(ctc),
+    city: city,
+    state: (CITY_CONFIG[city] || { state:"Other / none" }).state,
+    basicPct: clamp(Math.round(basicPct * 10) / 10, 20, 70),
+    hraPct: clamp(Math.round(hraPct * 10) / 10, 0, 100),
+    varPct: clamp(Math.round(varPct * 10) / 10, 0, 90),
+    payoutPct: payout === null ? 100 : clamp(payout, 0, 200),
+    rent: rent || 0,
+    joining: joining || 0,
+    clawback: clawback || 12,
+    retention: retention || 0,
+    retentionYear: retMonths ? Math.max(1, Math.ceil(retMonths / 12)) : 2,
+    equity: equity || 0,
+    vestYears: vestYears || 4,
+    cliff: cliff || 12,
+    liquidity: liquidity,
+    relocAllow: relocAllow || 0,
+    relocCost: relocCost || 0,
+    noticeMonths: noticeDays ? Math.max(1, Math.round(noticeDays / 30)) : 2,
+    buyout: buyout,
+    premium: found.ins || 0,
+    premiumBy: premiumBy,
+    insSelf: sumIns || 0,
+    insParents: parentIns || 0,
+    perks: perks || 0,
+    hike: hike === null ? 10 : clamp(hike, 0, 100),
+    hours: hours === null ? 45 : clamp(hours, 10, 100),
+    commute: commute === null ? 30 : clamp(commute, 0, 300)
+  });
+  return { offer:o, components, missing, title, filename, ctcFound: found.ctc !== undefined };
+}
+
+/* ---- Import flow -------------------------------------------------- */
+async function handleFiles(fileList, target){
+  const files = [...fileList].filter(f => /\.pdf$/i.test(f.name) || f.type === "application/pdf").slice(0, 4);
+  if (!files.length){ toast("Those are not PDF files"); return; }
+  $("importModal").classList.add("open");
+  $("importBody").innerHTML = "";
+  $("importActions").style.display = "none";
+  $("importStatus").innerHTML = '<div class="notice">Reading ' + files.length + ' file' + (files.length > 1 ? "s" : "") + '…</div>';
+
+  importDrafts = [];
+  for (const f of files){
+    try {
+      const lines = await pdfToLines(f);
+      if (!lines.length){
+        importDrafts.push({ error:"No text found. This looks like a scanned image rather than a text PDF.", filename:f.name });
+        continue;
+      }
+      importDrafts.push(parseOfferLetter(lines, f.name));
+    } catch (err){
+      importDrafts.push({ error: err.message || "This file could not be read.", filename:f.name });
+    }
+  }
+  importDrafts.forEach(d => { if (d.offer) d.offer.target = target; });
+  renderImportReview(target);
+}
+
+function renderImportReview(target){
+  const ok = importDrafts.filter(d => d.offer);
+  $("importStatus").innerHTML = ok.length
+    ? '<div class="notice good">Read ' + ok.length + ' offer' + (ok.length > 1 ? "s" : "") + '. Check the figures below and correct anything that looks wrong — offer letters vary, and this reads them line by line.</div>'
+    : '<div class="notice warn">Nothing could be read from those files.</div>';
+
+  $("importBody").innerHTML = importDrafts.map((d, i) => {
+    if (d.error) return '<div class="imp-card"><div class="imp-file">' + esc(d.filename) + '</div><div class="imp-miss">' + esc(d.error) + '</div></div>';
+    const o = d.offer;
+    const F = (f, label, step) => '<label class="fld" style="margin-bottom:8px"><span class="lbl">' + label +
+      '</span><input type="number" data-di="' + i + '" data-df="' + f + '" value="' + safe(o[f]) + '" step="' + (step || 1) + '"></label>';
+    const cityOpts = cityNames().map(n => '<option value="' + n + '"' + (n === o.city ? " selected" : "") + '>' + n + '</option>').join("");
+    return '<div class="imp-card">' +
+      '<div class="imp-file">' + esc(d.filename) + (d.title ? ' · ' + esc(d.title) : '') + '</div>' +
+      '<label class="fld" style="margin:6px 0 8px"><span class="lbl">Offer name</span>' +
+      '<input type="text" data-di="' + i + '" data-df="name" value="' + esc(o.name) + '"></label>' +
+      '<div class="grid g4" style="gap:0 10px">' +
+        F("ctc", "Fixed CTC (₹/yr)", 10000) +
+        '<label class="fld" style="margin-bottom:8px"><span class="lbl">City</span><select data-di="' + i + '" data-df="city">' + cityOpts + '</select></label>' +
+        F("basicPct", "Basic % of CTC") + F("hraPct", "HRA % of Basic") +
+        F("varPct", "Variable % of CTC") + F("payoutPct", "Realistic payout %", 5) +
+        F("rent", "Monthly rent (₹)", 1000) + F("hours", "Hours per week") +
+        F("commute", "Commute each way (min)", 5) + F("hike", "Expected hike %") +
+        F("joining", "Joining bonus (₹)", 10000) + F("equity", "Equity grant (₹)", 50000) +
+      '</div>' +
+      (d.missing.length ? '<div class="imp-miss">Could not find: ' + d.missing.map(esc).join(" ") + '</div>' : '') +
+    '</div>';
+  }).join("");
+
+  $("importBody").querySelectorAll("[data-df]").forEach(inp => inp.addEventListener("input", e => {
+    const d = importDrafts[+e.target.dataset.di], f = e.target.dataset.df;
+    if (!d || !d.offer) return;
+    d.offer[f] = e.target.type === "number" ? safe(e.target.value) : e.target.value;
+    if (f === "city" && CITY_CONFIG[e.target.value]) d.offer.state = CITY_CONFIG[e.target.value].state;
+  }));
+
+  $("importActions").style.display = ok.length ? "" : "none";
+  $("btnApplyImport").textContent = target === "decoder"
+    ? "Load into the Decoder" : "Use " + (ok.length === 1 ? "this offer" : "these " + ok.length + " offers");
+}
+
+function applyImport(target){
+  const ok = importDrafts.filter(d => d.offer);
+  if (!ok.length) return;
+  if (target === "decoder"){
+    const d = ok[0], o = d.offer;
+    $("i_ctc").value = o.ctc; $("i_basicPct").value = clamp(o.basicPct, 30, 60);
+    $("i_hraPct").value = clamp(o.hraPct, 0, 60); $("i_varPct").value = clamp(o.varPct, 0, 40);
+    $("i_payoutPct").value = clamp(o.payoutPct, 0, 150); $("i_rent").value = o.rent;
+    $("i_city").value = o.city; $("i_state").value = o.state;
+    $("i_cityB").value = o.city; $("i_stateB").value = o.state; $("i_ctcB").value = o.ctc;
+    // Mode B gets the letter's own lines, so the structure matches the offer exactly
+    if (d.components.length){
+      manualRows = d.components.map(c => ({ key:c.key, name:c.name, annual:Math.round(c.annual), treat:c.treat, exemptCap:null }));
+      if (!manualRows.some(r => r.key === "variable"))
+        manualRows.push({ key:"variable", name:"Variable Pay / Performance Bonus", annual:0, treat:"taxable", exemptCap:null });
+      MODE = "B"; $("modeB").classList.add("active"); $("modeA").classList.remove("active");
+      $("paneA").style.display = "none"; $("paneB").style.display = "";
+      renderManualTable();
+    }
+    refresh();
+    toast("Loaded " + o.name);
+  } else {
+    offers = ok.slice(0, 4).map(d => { const o = deepCopy(d.offer); delete o.target; return o; });
+    while (offers.length < 2) offers.push(newOffer(offers.length));
+    renderOfferCards(); renderComparison();
+    switchTab("compare");
+    toast("Loaded " + offers.length + " offers");
+  }
+  $("importModal").classList.remove("open");
+}
+
+/* ==================================================================
+   ██  RESET  ██
+   Every field's opening value, in one place, so "start over" really
+   does put the app back where it began.
+   ================================================================== */
+const FIELD_DEFAULTS = {
+  numbers: { i_ctc:1800000, i_ctcB:1800000, i_basicPct:40, i_hraPct:50, i_varPct:0, i_payoutPct:100,
+             i_npsPct:0, i_insurance:12000, i_rent:0, i_80c:0, i_80d:0, i_80ccd1b:0, i_hloan:0,
+             i_gratYears:5, i_age:30, i_retAge:58, i_growth:8, i_epfRate:8.25, i_hike:20,
+             i_targetInhand:150000, i_workDays:240, i_eqDiscount:60 },
+  checks:  { i_pfCeiling:false, i_gratuityProv:true },
+  selects: { i_city:"Mumbai", i_cityB:"Mumbai", i_state:"Maharashtra", i_stateB:"Maharashtra",
+             i_regime:"auto", i_baseCity:"Mumbai" }
+};
+
+function resetApp(deleteSaved){
+  // 1. stored state
+  try {
+    localStorage.removeItem(LS.state);
+    localStorage.removeItem(LS.cfg);
+    if (deleteSaved) localStorage.removeItem(LS.offers);
+  } catch (e){}
+
+  // 2. rules back to the seeded defaults
+  TAX_CONFIG = deepCopy(DEFAULT_TAX_CONFIG); PF_CONFIG = deepCopy(DEFAULT_PF_CONFIG);
+  PT_CONFIG = deepCopy(DEFAULT_PT_CONFIG); CITY_CONFIG = deepCopy(DEFAULT_CITY_CONFIG);
+  GRATUITY_CONFIG = deepCopy(DEFAULT_GRATUITY_CONFIG); ALLOWANCE_CONFIG = deepCopy(DEFAULT_ALLOWANCE_CONFIG);
+  persistConfig();
+
+  // 3. every input on screen
+  rebuildSelects();
+  for (const id in FIELD_DEFAULTS.numbers) if ($(id)) $(id).value = FIELD_DEFAULTS.numbers[id];
+  for (const id in FIELD_DEFAULTS.checks)  if ($(id)) $(id).checked = FIELD_DEFAULTS.checks[id];
+  for (const id in FIELD_DEFAULTS.selects) if ($(id)) $(id).value = FIELD_DEFAULTS.selects[id];
+  buildAllowanceBox();
+
+  // 4. back to "I only know the CTC"
+  MODE = "A"; manualRows = [];
+  $("modeA").classList.add("active"); $("modeB").classList.remove("active");
+  $("paneA").style.display = ""; $("paneB").style.display = "none";
+  showErr("e_ctc", ""); showErr("e_rent", "");
+  heroCurrent = 0;
+
+  // 5. two empty offers and neutral weights
+  offers = [newOffer(0), newOffer(1)];
+  FACTORS.forEach(f => weights[f.key] = 5);
+  importDrafts = [];
+
+  renderOfferCards(); renderWeights(); renderHistory();
+  refresh(); renderComparison();
+  $("resetModal").classList.remove("open");
+  toast(deleteSaved ? "Everything cleared" : "Form cleared — your saved comparisons are still there");
+}
+
+/* ==================================================================
+   ██  APP WIRING  ██
+   ================================================================== */
+function setTheme(t){
+  document.documentElement.setAttribute("data-theme", t);
+  $("btnTheme").textContent = t === "dark" ? "☀️" : "🌙";
+  lsSet(LS.theme, { t });
+  redrawEverything();                 // charts must be repainted for the new palette
+}
+
+function switchTab(name){
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".module").forEach(m => {
+    const on = m.id === "tab-" + name;
+    m.classList.toggle("active", on);
+    m.style.display = on ? "" : "none";
+  });
+  if (name === "compare") renderComparison();
+}
+
+function sendToComparator(){
+  const inp = readInputs();
+  const r = decode(inp);
+  const o = newOffer(offers.length);
+  o.name = "Decoded offer";
+  o.ctc = inp.ctc; o.city = inp.city; o.state = inp.state; o.rent = inp.rent;
+  o.basicPct = clamp(inp.basicPct, 20, 70);
+  o.hraPct = r.basic > 0 ? clamp(r.hra / r.basic * 100, 0, 100) : 50;
+  o.varPct = inp.varPct || 0; o.payoutPct = inp.payoutPct || 100;
+  if (offers.length >= 4) offers[3] = o; else offers.push(o);
+  renderOfferCards(); switchTab("compare"); renderComparison();
+  toast("Added to the Comparator");
+}
+
+function applyPreset(kind){
+  if (kind === "inhand"){
+    $("i_basicPct").value = 30; $("i_pfCeiling").checked = true; $("i_npsPct").value = 0;
+    document.querySelectorAll("[data-allow]").forEach(i => { i.checked = ["food","telecom","fuel","books","profdev","lta"].includes(i.dataset.allow); });
+    toast("Structured for maximum cash today");
+  } else {
+    $("i_basicPct").value = 60; $("i_pfCeiling").checked = false;
+    $("i_npsPct").value = Math.round(((TAX_CONFIG.regimes.new.ccd2Pct) || 0.14) * 100);
+    document.querySelectorAll("[data-allow]").forEach(i => i.checked = false);
+    toast("Structured for maximum long-term savings");
+  }
+  refresh();
+}
+
+function init(){
+  loadConfig();
+  const th = lsGet(LS.theme, { t:"light" });
+  document.documentElement.setAttribute("data-theme", th.t === "dark" ? "dark" : "light");
+  $("btnTheme").textContent = th.t === "dark" ? "☀️" : "🌙";
+
+  fillSelect("i_city", cityNames(), "Mumbai");
+  fillSelect("i_cityB", cityNames(), "Mumbai");
+  fillSelect("i_state", stateNames(), "Maharashtra");
+  fillSelect("i_stateB", stateNames(), "Maharashtra");
+  fillSelect("i_baseCity", cityNames(), "Mumbai");
+  buildAllowanceBox();
+  persistConfig();
+
+  [$("disc1"), $("disc2"), $("disc3")].forEach(d => { if (d) d.textContent = DISCLAIMER; });
+
+  // Keep the state select in step with the chosen city, and the HRA % with metro status
+  $("i_city").addEventListener("change", () => {
+    const c = CITY_CONFIG[$("i_city").value];
+    if (c){ $("i_state").value = c.state; $("i_hraPct").value = c.metro ? 50 : 40; }
+    refresh();
+  });
+  $("i_cityB").addEventListener("change", () => {
+    const c = CITY_CONFIG[$("i_cityB").value]; if (c) $("i_stateB").value = c.state; refresh();
+  });
+
+  // Every input recalculates live. No submit button anywhere.
+  document.querySelectorAll("#tab-decode input, #tab-decode select").forEach(i => {
+    i.addEventListener("input", refresh); i.addEventListener("change", refresh);
+  });
+
+  document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  $("btnTheme").addEventListener("click", () => setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"));
+  $("btnSettings").addEventListener("click", () => { renderSettings(); $("settingsModal").classList.add("open"); });
+  $("btnCloseSettings").addEventListener("click", () => $("settingsModal").classList.remove("open"));
+  $("settingsModal").addEventListener("click", e => { if (e.target.id === "settingsModal") $("settingsModal").classList.remove("open"); });
+  $("btnApplyCfg").addEventListener("click", applyConfigJson);
+  $("btnResetCfg").addEventListener("click", resetConfig);
+
+  $("modeA").addEventListener("click", () => {
+    MODE = "A"; $("modeA").classList.add("active"); $("modeB").classList.remove("active");
+    $("paneA").style.display = ""; $("paneB").style.display = "none"; refresh();
+  });
+  $("modeB").addEventListener("click", () => {
+    MODE = "B"; $("modeB").classList.add("active"); $("modeA").classList.remove("active");
+    $("paneA").style.display = "none"; $("paneB").style.display = "";
+    $("i_ctcB").value = num("i_ctc");
+    $("i_cityB").value = $("i_city").value; $("i_stateB").value = $("i_state").value;
+    manualRows = defaultManualRows(); renderManualTable(); refresh();
+  });
+  $("btnAddComp").addEventListener("click", () => {
+    manualRows.push({ key:"custom", name:"New component", annual:0, treat:"taxable", exemptCap:null });
+    renderManualTable(); refresh();
+  });
+  $("btnAutoAdjust").addEventListener("click", () => {
+    const target = num("i_ctcB");
+    const others = manualRows.filter(r => r.key !== "special").reduce((a, r) => a + Math.max(0, safe(r.annual)), 0);
+    const diff = Math.round(target - others);
+    let sp = manualRows.find(r => r.key === "special");
+    if (!sp){ sp = { key:"special", name:"Special Allowance", annual:0, treat:"taxable", exemptCap:null }; manualRows.push(sp); }
+    sp.annual = Math.max(0, diff);
+    renderManualTable(); refresh();
+    toast(diff < 0 ? "Components already exceed the CTC — remove or reduce a line" : "Special Allowance set to " + inr(sp.annual));
+  });
+  $("btnMaxInhand").addEventListener("click", () => applyPreset("inhand"));
+  $("btnMaxSave").addEventListener("click", () => applyPreset("save"));
+  $("btnSendToCompare").addEventListener("click", sendToComparator);
+
+  // ---- Comparator
+  const st = lsGet(LS.state, null);
+  if (st && Array.isArray(st.offers) && st.offers.length >= 2){
+    offers = st.offers; if (st.weights) weights = Object.assign(weights, st.weights);
+  } else {
+    offers = [newOffer(0), newOffer(1)];
+    offers[1].ctc = 2400000; offers[1].city = "Mumbai"; offers[1].state = "Maharashtra";
+    offers[1].varPct = 15; offers[1].commute = 60; offers[1].hours = 50;
+  }
+  renderOfferCards(); renderWeights(); renderHistory();
+  $("btnAddOffer").addEventListener("click", () => {
+    if (offers.length >= 4){ toast("Four offers is the limit — remove one first"); return; }
+    offers.push(newOffer(offers.length)); renderOfferCards(); renderComparison();
+  });
+  $("btnSaveSet").addEventListener("click", saveComparison);
+  $("btnExcel").addEventListener("click", exportExcel);
+
+  // ---- Reading offer letters from PDF ----
+  let importTarget = "compare";
+  const pick = t => { importTarget = t; $("pdfInput").value = ""; $("pdfInput").click(); };
+  $("btnImport").addEventListener("click", () => pick("compare"));
+  $("dzPick").addEventListener("click", () => pick("compare"));
+  $("btnImportOne").addEventListener("click", () => pick("decoder"));
+  $("pdfInput").addEventListener("change", e => { if (e.target.files.length) handleFiles(e.target.files, importTarget); });
+  $("btnApplyImport").addEventListener("click", () => applyImport(importTarget));
+  [$("btnCloseImport"), $("btnCloseImport2")].forEach(b => b.addEventListener("click", () => $("importModal").classList.remove("open")));
+  $("importModal").addEventListener("click", e => { if (e.target.id === "importModal") $("importModal").classList.remove("open"); });
+
+  const dz = $("dropzone");
+  ["dragenter", "dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
+  dz.addEventListener("drop", e => { importTarget = "compare"; if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, "compare"); });
+  // Stop a stray drop elsewhere on the page from navigating away from the app
+  ["dragover", "drop"].forEach(ev => window.addEventListener(ev, e => { if (e.target.closest && !e.target.closest("#dropzone")) e.preventDefault(); }));
+
+  // ---- Reset ----
+  $("btnReset").addEventListener("click", () => $("resetModal").classList.add("open"));
+  $("btnResetCancel").addEventListener("click", () => $("resetModal").classList.remove("open"));
+  $("btnResetForm").addEventListener("click", () => resetApp(false));
+  $("btnResetAll").addEventListener("click", () => resetApp(true));
+  $("resetModal").addEventListener("click", e => { if (e.target.id === "resetModal") $("resetModal").classList.remove("open"); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") document.querySelectorAll(".modal-bg.open").forEach(m => m.classList.remove("open"));
+  });
+  ["i_baseCity", "i_workDays", "i_eqDiscount"].forEach(id => $(id).addEventListener("input", renderComparison));
+
+  refresh();
+  renderComparison();
+}
+
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+else init();
+</script>
+</body>
+</html>

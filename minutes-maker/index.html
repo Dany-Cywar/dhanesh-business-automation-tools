@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minutes Maker — turn messy notes into clean minutes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12222E;
+    --ink-2:#3B5063;
+    --ink-3:#6C8093;
+    --paper:#FFFFFF;
+    --wash:#E8ECEF;
+    --rule:#D2DAE1;
+    --mark:#FFD44D;
+    --mark-soft:rgba(255,212,77,.5);
+    --steel:#1F5F8B;
+    --rust:#A33B2A;
+    --line-h:28px;
+    --sans:"IBM Plex Sans","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:"Newsreader",Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--wash);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1220px;margin:0 auto;padding:0 20px 64px}
+
+  /* ---------- masthead ---------- */
+  header.mast{
+    background:var(--ink);
+    color:#EDF2F5;
+    border-bottom:3px solid var(--mark);
+  }
+  .mast-in{max-width:1220px;margin:0 auto;padding:26px 20px 24px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+  .mast h1{
+    font-family:var(--serif);
+    font-weight:500;
+    font-size:34px;
+    line-height:1.1;
+    margin:0 0 6px;
+    letter-spacing:-.01em;
+  }
+  .mast p{margin:0;color:#A8BCCB;max-width:60ch;font-size:14.5px}
+  .stamp{
+    font-family:var(--serif);
+    font-size:13px;
+    color:var(--ink);
+    background:var(--mark);
+    padding:6px 12px;
+    border-radius:2px;
+    transform:rotate(-1.2deg);
+    white-space:nowrap;
+  }
+
+  /* ---------- layout ---------- */
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:22px;margin-top:22px;align-items:start}
+  @media (max-width:900px){.grid{grid-template-columns:1fr;gap:16px}}
+
+  .panel{background:var(--paper);border:1px solid var(--rule);border-radius:3px}
+  .panel-head{padding:14px 18px;border-bottom:1px solid var(--rule);display:flex;gap:12px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+  .panel-head h2{font-family:var(--serif);font-weight:600;font-size:19px;margin:0}
+  .panel-head span{color:var(--ink-3);font-size:13px}
+  .panel-body{padding:18px}
+
+  /* ---------- input ---------- */
+  .samples{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .chip{
+    font:inherit;font-size:13px;
+    background:#F2F5F7;color:var(--ink-2);
+    border:1px solid var(--rule);border-radius:2px;
+    padding:6px 11px;cursor:pointer;
+  }
+  .chip:hover{background:var(--mark-soft);border-color:#C6B270;color:var(--ink)}
+  textarea#src{
+    width:100%;min-height:340px;resize:vertical;
+    border:1px solid var(--rule);border-radius:2px;
+    padding:10px 12px;
+    font-family:var(--sans);font-size:14px;
+    line-height:var(--line-h);
+    color:var(--ink);
+    background-color:#fff;
+    background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 27px,#EEF2F4 27px,#EEF2F4 28px);
+    background-position:0 11px;
+    background-attachment:local;
+  }
+  textarea#src:focus{outline:2px solid var(--steel);outline-offset:1px}
+  .controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:14px;justify-content:space-between}
+  .seg{display:inline-flex;border:1px solid var(--rule);border-radius:2px;overflow:hidden}
+  .seg button{font:inherit;font-size:13px;background:#fff;border:0;padding:7px 13px;cursor:pointer;color:var(--ink-2);border-right:1px solid var(--rule)}
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  .go{
+    font:inherit;font-weight:600;font-size:15px;
+    background:var(--ink);color:#fff;border:0;border-radius:2px;
+    padding:12px 22px;cursor:pointer;
+  }
+  .go:hover{background:#1B3242}
+  .go:disabled{opacity:.5;cursor:default}
+  .meta-line{margin-top:10px;font-size:12.5px;color:var(--ink-3)}
+  .ghost{font:inherit;font-size:13px;background:none;border:0;color:var(--steel);cursor:pointer;padding:0;text-decoration:underline}
+
+  /* ---------- output ---------- */
+  .exports{display:flex;flex-wrap:wrap;gap:8px}
+  .exp{
+    font:inherit;font-size:13px;font-weight:500;
+    background:#fff;color:var(--ink);
+    border:1px solid var(--ink);border-radius:2px;
+    padding:7px 13px;cursor:pointer;
+  }
+  .exp:hover{background:var(--mark)}
+  .exp:disabled{opacity:.35;cursor:default;border-color:var(--rule)}
+
+  .empty{color:var(--ink-3);font-size:14px;padding:26px 4px;max-width:46ch}
+  .empty b{color:var(--ink-2);font-weight:600}
+
+  .doc h3{
+    font-family:var(--serif);font-weight:600;font-size:17px;
+    margin:26px 0 10px;display:inline-block;
+    background-image:linear-gradient(var(--mark-soft),var(--mark-soft));
+    background-size:100% .55em;background-repeat:no-repeat;background-position:0 88%;
+    padding:0 3px;
+  }
+  .doc h3:first-child{margin-top:0}
+  .doc .title{font-family:var(--serif);font-size:24px;font-weight:600;line-height:1.2;margin:0 0 4px}
+  .doc .subtitle{color:var(--ink-3);font-size:13.5px;margin:0 0 4px}
+  .doc ul{margin:0 0 4px;padding-left:19px}
+  .doc li{margin:0 0 7px}
+  .doc .topic{font-weight:600;margin:14px 0 5px;font-size:14px}
+  .doc .topic:first-of-type{margin-top:0}
+
+  table.acts{width:100%;border-collapse:collapse;font-size:14px}
+  table.acts th{
+    text-align:left;font-weight:600;font-size:12.5px;color:var(--ink-3);
+    border-bottom:1px solid var(--rule);padding:0 8px 6px 0;
+  }
+  table.acts td{border-bottom:1px solid #EDF1F3;padding:9px 8px 9px 0;vertical-align:top}
+  table.acts td:first-child{white-space:nowrap;font-weight:600}
+  .due{white-space:nowrap;color:var(--ink-2)}
+  .pri{font-size:12px;padding:1px 7px;border-radius:2px;white-space:nowrap}
+  .pri.high{background:#F6E2DE;color:var(--rust);font-weight:600}
+  .pri.med{background:#EAF0F5;color:var(--steel)}
+  .pri.norm{color:var(--ink-3)}
+  .none{color:var(--ink-3);font-style:italic;font-size:13.5px}
+
+  .toast{
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%);
+    background:var(--ink);color:#fff;padding:10px 18px;border-radius:2px;
+    font-size:14px;box-shadow:0 6px 22px rgba(18,34,46,.28);
+    opacity:0;pointer-events:none;transition:opacity .18s ease;
+  }
+  .toast.show{opacity:1}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+  footer{margin-top:26px;color:var(--ink-3);font-size:12.5px;max-width:70ch}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="mast-in">
+    <div>
+      <h1>Minutes Maker</h1>
+      <p>Paste a raw transcript or a pile of scribbled notes. Get structured minutes with decisions, owners and deadlines pulled out — then copy them or save as text or Excel.</p>
+    </div>
+    <div class="stamp">Runs fully offline in your browser</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+
+    <!-- INPUT -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Paste what you have</h2>
+        <span id="wordCount">0 words</span>
+      </div>
+      <div class="panel-body">
+        <div class="samples">
+          <button class="chip" data-demo="a">Load sample: recorded call</button>
+          <button class="chip" data-demo="b">Load sample: messy note dump</button>
+          <button class="chip" data-demo="c">Load sample: shorthand notes</button>
+          <button class="chip" id="clearBtn">Clear</button>
+        </div>
+        <textarea id="src" placeholder="Paste your meeting transcript, Zoom or Meet captions, voice-note text, or the notes you typed while the meeting ran. Anything goes — speaker labels, timestamps and filler words are handled."></textarea>
+        <div class="controls">
+          <div class="seg" role="group" aria-label="How much detail to keep">
+            <button data-level="tight" aria-pressed="false">Tight</button>
+            <button data-level="balanced" aria-pressed="true">Balanced</button>
+            <button data-level="full" aria-pressed="false">Full</button>
+          </div>
+          <button class="go" id="goBtn">Create minutes</button>
+        </div>
+        <p class="meta-line">Nothing you paste leaves this page. There is no server and no account.</p>
+      </div>
+    </section>
+
+    <!-- OUTPUT -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Your minutes</h2>
+        <div class="exports">
+          <button class="exp" id="copyBtn" disabled>Copy</button>
+          <button class="exp" id="txtBtn" disabled>Save .txt</button>
+          <button class="exp" id="xlsBtn" disabled>Save .xlsx</button>
+          <button class="exp" id="mdBtn" disabled>Save .md</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="out" class="doc">
+          <p class="empty">Nothing to show yet. Paste your notes on the left and press <b>Create minutes</b>, or try one of the three samples to see how it reads.</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer>
+    Owners, dates and decisions are picked up from the wording of your notes, so the more plainly a task is stated ("Priya will send the deck by Friday"), the cleaner the result. Always read the action list before you circulate it.
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ==================== ENGINE START ==================== */
+
+var MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec";
+var DAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday";
+
+var LABEL_WORDS = ["note","notes","action","actions","action items","agenda","topic","topics","date","time","subject","title","attendees","present","apologies","location","venue","duration","decision","decisions","summary","update","updates","next","next steps","todo","to-do","follow up","follow-up","risks","issues","questions","context","background","status","recap","p.s","ps","also","btw","fyi","eta","owner","deadline","meeting","minutes","participants","invited","absent","link","recording","goal","goals","objective","problem","idea","ideas","budget","team","misc","commercials","scope","compliance","other"];
+
+/* words that look like names but never are */
+var NAME_STOP = ["sorry","moving","agreed","decided","also","next","okay","ok","right","yeah","yes","thanks","thank","good","great","just","going","looking","nothing","someone","somebody","everyone","anyone","nobody","client","team","vendor","finance","marketing","sales","note","open","last","first","second","third","one","two","three","most","other","another","apparently","basically","since","given","regarding","following","meanwhile","however","overall","ideally","currently","honestly","personally","everything","both","each","this","that","these","those","there","here","what","when","where","which","who","why","how","need","needs","want","have","has","will","should","must","let","make","take","send","share","check","update","review","create","fix","confirm","book","call","write","build","add","set","get","put","keep","try","ask","tell","give","use","run","move","plan","start","stop","end","continue","consider","ensure","escalate","file","draft","prepare","schedule","coordinate","finalise","finalize","publish","deploy","test","hire","onboard","raise","revert","collect","compile","design","record","upload","migrate","track","audit","clean","reconcile","approve","sign","pay","order","follow","circle","loop","sync","touch","chase","waiting","pending","hopefully","unfortunately","currently","overall","total","cost","price","revenue","budget","risk","issue","problem","question","point","idea","reason","result","target","report","data","support","service","product","quality","delivery","payment","invoice","insurance","warehouse","packaging","migration","hiring","interview","retainer","scope","penalty","deadline","monday","tuesday","wednesday","thursday","friday","saturday","sunday","january","february","march","april","june","july","august","september","october","november","december"];
+
+var DEADLINE_RES = [
+  new RegExp("\\bby (?:the )?end of (?:the )?(?:day|week|month|quarter|year)\\b","i"),
+  new RegExp("\\bend of (?:the )?(?:day|week|month|quarter|year)\\b","i"),
+  new RegExp("\\b(?:eod|eow|eom|cob|asap)\\b","i"),
+  new RegExp("\\bby (?:today|tomorrow|tonight|this evening)(?:\\s+(?:morning|afternoon|evening|night))?\\b","i"),
+  new RegExp("\\bby (?:next |this |coming )?(?:" + DAYS + ")(?:\\s+(?:morning|afternoon|evening|night))?\\b","i"),
+  new RegExp("\\b(?:on|this|next|coming) (?:" + DAYS + ")(?:\\s+(?:morning|afternoon|evening|night))?\\b","i"),
+  new RegExp("\\bby (?:the )?\\d{1,2}(?:st|nd|rd|th)?(?:\\s+(?:of\\s+)?(?:" + MONTHS + ")\\b)?","i"),
+  new RegExp("\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:" + MONTHS + ")\\b","i"),
+  new RegExp("\\b(?:" + MONTHS + ")\\s+\\d{1,2}(?:st|nd|rd|th)?\\b","i"),
+  new RegExp("\\b\\d{1,2}[\\/\\-\\.]\\d{1,2}(?:[\\/\\-\\.]\\d{2,4})?\\b"),
+  new RegExp("\\bwithin (?:the )?(?:next )?\\w+ (?:hours?|days?|weeks?|months?)\\b","i"),
+  new RegExp("\\bin (?:the )?next \\w+ (?:days?|weeks?|months?)\\b","i"),
+  new RegExp("\\bnext (?:week|month|quarter|fortnight)\\b","i"),
+  new RegExp("\\bthis (?:week|month|quarter|weekend)\\b","i"),
+  new RegExp("\\bq[1-4](?:\\s+\\d{4})?\\b","i"),
+  new RegExp("\\bbefore (?:the )?(?:next )?(?:launch|call|meeting|weekend|dispatch|review|session|deadline|" + DAYS + ")\\b","i"),
+  new RegExp("\\b(?:today|tomorrow)(?:\\s+(?:morning|afternoon|evening|night))?\\b","i")
+];
+
+var DO_VERBS = "send|share|prepare|draft|check|update|review|create|build|fix|set up|schedule|book|arrange|confirm|call|coordinate|circulate|finalise|finalize|publish|deploy|test|hire|onboard|raise|revert|collect|compile|write|design|record|upload|migrate|track|audit|clean|reconcile|approve|sign|pay|order|follow|map|file|escalate|propose|move|switch|decide|pull|run|start|handle|own|drive|lead|take|speak|talk|sit|meet|add|remove|close|open|fill|clear|push|ship|rewrite|redo|rework|renew|reply|respond|email|message|ping|explore|evaluate|compare|negotiate|discuss";
+
+/* explicit commitment or instruction */
+var ACTION_STRONG = [
+  new RegExp("\\b(?:i'?ll|we'?ll|he'?ll|she'?ll|they'?ll)\\s+\\w+","i"),
+  new RegExp("\\b(?:will|shall)\\s+(?:also\\s+|then\\s+)?(?:" + DO_VERBS + ")\\b","i"),
+  new RegExp("\\b(?:needs? to|has to|have to|must|is to|are to)\\s+\\w+","i"),
+  new RegExp("\\b(?:action item|action point|to-?do|assigned to|will own|takes ownership|is responsible for|responsible for|owner is|over to me)\\b","i"),
+  new RegExp("\\blet'?s\\s+(?:" + DO_VERBS + ")\\b","i"),
+  new RegExp("\\b(?:follow up|follow-up on|circle back|loop in|check with|touch base|chase|revert with|send across|send over|put together|draw up|line up|sit with|get back to)\\b","i"),
+  new RegExp("\\b(?:please|can you|could you|would you|make sure|ensure)\\b","i"),
+  new RegExp("\\b(?:should|needs? to)\\s+(?:" + DO_VERBS + ")\\b","i"),
+  new RegExp("^[A-Z][a-z'’-]+\\s+to\\s+(?:" + DO_VERBS + ")\\b"),
+  new RegExp("\\b[A-Z][a-z'’-]+\\s+(?:will|to)\\s+(?:" + DO_VERBS + ")\\b")
+];
+
+var ACTION_WEAK = [
+  /\b(?:going to|supposed to|planning to|plan to|want to|wants to|hoping to|aim to|intend to|shall we)\b/i,
+  /\b(?:should|could)\b/i
+];
+
+var DECISION_RES = [
+  /\b(?:we (?:have )?(?:decided|agreed)|it was (?:decided|agreed)|we'?ve (?:decided|agreed)|agreed (?:that|to|on)|decided (?:that|to|on)|decision(?: is| was| taken| is to)|decisions (?:are|were)|decision:|we'?re going (?:with|ahead)|we are going (?:with|ahead)|going with|we'?ll go with|locked (?:in|it)|signed off|sign-?off|approved|greenlit|green light|no-?go|settled on|consensus|concluded|scrapping|scrapped|dropping the|dropped the|calling it off|we are not (?:doing|going)|we won'?t be|final call is)\b/i,
+  /^decided\b/i
+];
+
+var RISK_RES = [
+  /\b(?:risk\w*|blocked|blocker\w*|blocking|concern\w*|worried|worry|issue\w*|problem\w*|bug\w*|delay\w*|slipping|slipped|behind schedule|bottleneck\w*|dependency|dependencies|depends on|short (?:on|of)|shortfall|running out|over budget|budget is tight|churn|complaint\w*|failed|failing|failure\w*|outage|rejected|penalt\w*|non-?compliance|shortage|crunch|understaffed|overrun|not sustainable|stretched|threatened|threat|unhappy|cannot repeat|missed the deadline|push back|pushback)\b/i
+];
+
+var QUESTION_RES = [
+  /\b(?:not sure|unclear|unsure|tbd|to be decided|to be confirmed|open question|open point|need clarity|needs clarity|waiting (?:on|for)|yet to (?:decide|hear|confirm)|pending (?:a )?(?:decision|confirmation|approval)|no answer yet|still deciding|haven'?t decided|did not resolve|didn'?t resolve|no decision (?:taken|yet)|do we know|anyone know)\b/i
+];
+
+var NEXTSTEP_RES = [
+  /\b(?:next meeting|next sync|next standup|next call is|next review on|next check-?in|reconvene|meet again|regroup|same time next|revisit (?:this|it) (?:in|at|next|on)|revisit in the next|follow-?up (?:call|meeting)|in the next (?:monthly )?review)\b/i
+];
+
+var SMALLTALK_RES = /^(?:good (?:morning|afternoon|evening|question)|hi\b|hello\b|hey\b|thanks|thank you|welcome|no worries|sounds good|makes sense|agreed[.!]?$|exactly|got it|fair enough|sure[.!]?$|perfect|awesome|cool[.!]?$|let'?s get started|shall we (?:begin|start)|can everyone hear|is everyone (?:here|on)|sorry (?:i'?m late|to jump in)|i have to drop|see you|bye|talk soon|that'?s all|moving (?:to|on)|any (?:other )?(?:questions|business)\??$)/i;
+
+var TASK_REJECT_RES = /^(?:get started|started|start the (?:meeting|call)|begin|jump in|cover|move on|moving|wrap up|go ahead|be quick|keep it short|see|note that|mention)\b/i;
+
+var TOPIC_HINT_WORDS = ["revenue","sales","budget","cost","spend","pricing","price","launch","campaign","ad","ads","marketing","customer","client","user","team","hiring","hire","product","feature","website","app","report","data","target","growth","refund","payment","invoice","vendor","contract","deadline","timeline","quality","feedback","conversion","traffic","leads","retention","churn","training","workshop","content","design","stock","inventory","delivery","support","complaint","compliance","audit","tax","salary","margin","profit","loss","registration","gateway","rate","month","quote","quotation","interview","candidate","retainer","scope","returns"];
+
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function stripTimestamp(line){
+  return line.replace(/^\s*[\[\(]?\s*\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:am|pm))?\s*[\]\)]?\s*[-–—]?\s*/i,"");
+}
+
+function splitSentences(text){
+  var P = "\u0001";
+  var t = " " + text + " ";
+  t = t.replace(/\b(e|i)\.(g|e)\./gi, function(m,a,b){ return a + P + b + P; });
+  t = t.replace(/\b(mr|mrs|ms|dr|prof|sr|jr|vs|approx|no|inc|ltd|pvt|dept|est|fig|rs|st|ave)\./gi, function(m){ return m.slice(0,-1) + P; });
+  t = t.replace(/(\d)\.(\d)/g, "$1" + P + "$2");
+  var parts = t.match(/[^.!?…]+(?:[.!?…]+|$)/g) || [];
+  var out = [];
+  for(var i=0;i<parts.length;i++){
+    var s = parts[i].split(P).join(".").replace(/\s+/g," ").trim();
+    if(s.replace(/[^a-z0-9]/gi,"").length > 1) out.push(s);
+  }
+  return out;
+}
+
+/* long comma-only run-ons get broken into readable clauses */
+var CLAUSE_MARKER = /\s+(?=(?:and then|then |but |because |so we |so i |however|meanwhile|also |apparently|one more thing|another thing|other things|the main |we agreed|we decided|we said|i told|she is |she will|he is |he will|they are|they will|next up)\b)/i;
+
+function splitOnMarkers(str){
+  var out = [], parts = str.split(new RegExp(CLAUSE_MARKER.source, "gi"));
+  for(var i=0;i<parts.length;i++){
+    var pc = parts[i].trim();
+    if(!pc) continue;
+    if(pc.split(/\s+/).length < 6 && out.length) out[out.length-1] += " " + pc;
+    else out.push(pc);
+  }
+  return out.length ? out : [str];
+}
+
+var CONJ_RES = /^(?:and|but|so|because|then|which|where|while|also|plus|however|though|although|since)$/i;
+
+function hardWrap(str){
+  var w = str.split(/\s+/);
+  if(w.length <= 45) return [str];
+  var out = [], start = 0;
+  for(var i=0;i<w.length;i++){
+    var len = i - start + 1;
+    if(len >= 18 && CONJ_RES.test(w[i].replace(/[^A-Za-z]/g,""))){
+      out.push(w.slice(start, i).join(" ")); start = i;
+    } else if(len >= 34){
+      out.push(w.slice(start, i+1).join(" ")); start = i+1;
+    }
+  }
+  if(start < w.length){
+    var tail = w.slice(start).join(" ");
+    if(tail.split(/\s+/).length < 6 && out.length) out[out.length-1] += " " + tail;
+    else out.push(tail);
+  }
+  return out;
+}
+
+function chunkLong(s){
+  var words = s.split(/\s+/);
+  if(words.length <= 42) return [s];
+  var clauses = s.split(/,\s*/);
+  var out = [], buf = "";
+  var breakStart = /^(?:and\s+)?(?:then|also|so|but|next|other|another|apparently|one more|plus|i|we|he|she|they|[A-Z][a-z'’-]+)\b/;
+  for(var i=0;i<clauses.length;i++){
+    buf = buf ? buf + ", " + clauses[i] : clauses[i];
+    var wc = buf.split(/\s+/).length;
+    var nxt = clauses[i+1] || "";
+    if(wc >= 15 && (breakStart.test(nxt) || wc >= 28)){ out.push(buf); buf = ""; }
+  }
+  if(buf){
+    if(buf.split(/\s+/).length < 6 && out.length) out[out.length-1] += ", " + buf;
+    else out.push(buf);
+  }
+  var refined = [];
+  for(var k=0;k<out.length;k++){
+    var piece = out[k];
+    var pieces = piece.split(/\s+/).length > 34 ? splitOnMarkers(piece) : [piece];
+    for(var q=0;q<pieces.length;q++){
+      var deep = hardWrap(pieces[q]);
+      for(var d2=0; d2<deep.length; d2++) refined.push(deep[d2]);
+    }
+  }
+  return refined.length ? refined : out;
+}
+
+function cleanText(s){
+  var t = " " + s + " ";
+  t = t.replace(/\[(?:inaudible|crosstalk|laughter|laughs|pause|silence|unclear|music)[^\]]*\]/gi," ");
+  t = t.replace(/\((?:inaudible|crosstalk|laughter|laughs|pause|silence|unclear)\)/gi," ");
+  t = t.replace(/\b(?:um+|uh+|erm+|hmm+|mm+|mhm|uhh+|ahh+)\b/gi," ");
+  t = t.replace(/\b(?:you know|i mean|sort of|kind of|kinda|sorta|like i said|to be honest|at the end of the day|if that makes sense|you see|per se|and all that|or whatever|stuff like that)\b/gi," ");
+  t = t.replace(/\b(?:basically|actually|literally|obviously|honestly|frankly|essentially|definitely)\b/gi," ");
+  t = t.replace(/\b(\w+)\s+\1\b/gi,"$1");
+  t = t.replace(/\s{2,}/g," ");
+  for(var lp=0; lp<3; lp++){
+    t = t.replace(/^\s*(?:so|okay|ok|right|well|yeah|alright|anyway|and|but|also|now|see|look|listen|guys|team|folks|good question|fine|great|perfect|cool|nice|sure|exactly|thanks|ya|because|apparently|plus)\b[,:\s]+/i,"");
+    t = t.replace(/^\s*(?:i think|i guess|i suppose|i feel like|i would say)\b[,\s]+/i,"");
+  }
+  t = t.replace(/^[\s,;:.-]+/,"");
+  t = t.replace(/\s+([,.;:!?])/g,"$1");
+  t = t.replace(/,\s*,/g,",");
+  t = t.replace(/\s{2,}/g," ").trim();
+  if(!t) return "";
+  t = t.charAt(0).toUpperCase() + t.slice(1);
+  return t;
+}
+
+function finishSentence(s){
+  s = s.replace(/[\s,;:—–-]+$/,"");
+  s = s.replace(/\s+(?:and|but|or|so|then|which|while|because|also|plus|that|with|for|from)$/i,"");
+  s = s.replace(/[\s,;:—–-]+$/,"");
+  if(!s) return "";
+  if(!/[.!?]$/.test(s)) s += ".";
+  return s;
+}
+
+function hits(text, list){
+  var n = 0;
+  for(var i=0;i<list.length;i++) if(list[i].test(text)) n++;
+  return n;
+}
+
+function findDeadline(text){
+  for(var i=0;i<DEADLINE_RES.length;i++){
+    var m = text.match(DEADLINE_RES[i]);
+    if(m){
+      var d = m[0].replace(/^(?:by|on|before|within|in)\s+/i,"").trim();
+      d = d.replace(/^the\s+/i,"");
+      if(!d) d = m[0].trim();
+      return { display: d.charAt(0).toUpperCase() + d.slice(1), raw: m[0] };
+    }
+  }
+  return null;
+}
+
+function isStopName(w){
+  return NAME_STOP.indexOf(String(w).toLowerCase()) !== -1;
+}
+
+function nameShape(w){
+  return /^[A-Z][a-z'’.-]{1,20}(?: [A-Z][a-z'’.-]{1,20})?$/.test(w);
+}
+
+function detectSpeakers(lines){
+  var counts = {};
+  var re = /^\s*(?:[\[\(]?\s*\d{1,2}:\d{2}(?::\d{2})?\s*[\]\)]?\s*)?([A-Za-z][A-Za-z.'’-]*(?:\s+[A-Za-z][A-Za-z.'’-]*){0,2})\s*(?:\([^)]{0,40}\))?\s*:\s+\S/;
+  for(var i=0;i<lines.length;i++){
+    var m = lines[i].match(re);
+    if(!m) continue;
+    var cand = m[1].trim();
+    if(cand.split(/\s+/).length > 3) continue;
+    if(LABEL_WORDS.indexOf(cand.toLowerCase()) !== -1) continue;
+    if(isStopName(cand)) continue;
+    if(!/^[A-Z]/.test(cand)) continue;
+    counts[cand] = (counts[cand] || 0) + 1;
+  }
+  var speakers = [];
+  for(var k in counts){ if(counts[k] >= 2) speakers.push(k); }
+  return speakers;
+}
+
+function isHeading(line, nextLine){
+  var t = line.trim();
+  if(!t || t.length > 72) return false;
+  if(/^#{1,4}\s+\S/.test(t)) return true;
+  if(/^[-*•]/.test(t)) return false;
+  var words = t.replace(/[:#]/g,"").trim().split(/\s+/);
+  if(/:$/.test(t) && words.length <= 7) return true;
+  if(/^[A-Z0-9 &\/'()-]{4,}$/.test(t) && words.length <= 8 && /[A-Z]{2,}/.test(t)) return true;
+  if(/^\d+[.)]\s+[A-Z][^.!?]{2,50}$/.test(t)) return true;
+  var bulletNext = /^\s*[-*•·▪]/.test(nextLine || "");
+  if(words.length <= 5 && /^[A-Z]/.test(t) && !/[.!?,]$/.test(t) && !/\d/.test(t) && (words.length >= 2 || bulletNext)) return true;
+  return false;
+}
+
+function cleanHeading(line){
+  return line.replace(/^#{1,4}\s*/,"").replace(/^\d+[.)]\s*/,"").replace(/:$/,"").trim();
+}
+
+function titleCaseHeading(h){
+  if(/^[A-Z0-9 &\/'()-]+$/.test(h) && h.length > 3){
+    return h.toLowerCase().replace(/\b[a-z]/, function(c){ return c.toUpperCase(); });
+  }
+  return h.charAt(0).toUpperCase() + h.slice(1);
+}
+
+function jaccard(a,b){
+  var A = a.toLowerCase().replace(/[^a-z0-9 ]/g,"").split(/\s+/).filter(Boolean);
+  var B = b.toLowerCase().replace(/[^a-z0-9 ]/g,"").split(/\s+/).filter(Boolean);
+  if(!A.length || !B.length) return 0;
+  var set = {}, inter = 0, seen = {};
+  for(var i=0;i<A.length;i++) set[A[i]] = 1;
+  for(var j=0;j<B.length;j++){ if(set[B[j]] && !seen[B[j]]){ inter++; seen[B[j]] = 1; } }
+  var uni = Object.keys(set).length + B.length - inter;
+  return inter / uni;
+}
+
+function pushUnique(arr, text, threshold){
+  var t = finishSentence(text);
+  if(!t || t.length < 14) return false;
+  for(var i=0;i<arr.length;i++){
+    if(jaccard(arr[i], t) > (threshold || 0.7)) return false;
+  }
+  arr.push(t);
+  return true;
+}
+
+function extractAction(sentence, speaker, isName){
+  var s = sentence;
+  var owner = null, m;
+
+  m = s.match(/^@?([A-Z][a-z'’-]+(?:\s+[A-Z][a-z'’-]+)?)\s*,?\s+(?:will|shall|to|is going to|is gonna|needs to|has to|should|must|would|can|could|takes|owns|is taking)\b\s*(.*)$/);
+  if(m && isName(m[1])){ owner = m[1]; s = m[2]; }
+
+  if(!owner){
+    m = s.match(/^([A-Z][a-z'’-]+)\s*,\s*(?:please\b|can you\b|could you\b|would you\b|will you\b|you'?ll\b|you'?d\b|you need\b|you should\b|you can\b|we need to\b|we should\b|we have to\b)\s*(.*)$/i);
+    if(m && isName(m[1])){ owner = m[1]; s = m[2]; }
+  }
+  if(!owner){
+    m = s.match(/\b(?:assigned to|owner is|owned by|handed (?:over )?to|responsibility of)\s+@?([A-Z][a-z'’-]+)\b/);
+    if(m && isName(m[1])) owner = m[1];
+  }
+  if(!owner){
+    m = s.match(/\b@?([A-Z][a-z'’-]+)\s+(?:will|to|would|should|needs to|has to|is going to)\s+(?:also\s+)?(\w+)/);
+    if(m && isName(m[1])) owner = m[1];
+  }
+  if(!owner){
+    m = s.match(/\b@([A-Za-z][a-z'’-]+)\b/);
+    if(m) owner = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+  }
+  if(!owner && /^(?:i'?ll|i will|i can|i'?m going to|i'?ve got|let me|i shall|i need to|i have to|mine\b)/i.test(s)){
+    owner = speaker || "Unassigned";
+  }
+  if(!owner && /\b(?:we'?ll|let'?s|we need to|we should|we have to|we must|our team|the team will)\b/i.test(s)){
+    owner = "Team";
+  }
+  if(!owner) owner = speaker || "Unassigned";
+
+  var dl = findDeadline(sentence);
+  var task = s;
+  for(var pass=0; pass<3; pass++){
+    task = task.replace(/^[\s,;:.-]+/,"");
+    task = task.replace(/^(?:i'?ll|i will|i can|i'?m going to|let me|we'?ll|we will|let'?s|let us|we need to|we should|we have to|we must|you need to|you should|you'?ll|please|can you|could you|would you|someone needs to|somebody has to|i need to|i have to|i also|also i)\s+/i,"");
+    task = task.replace(/^(?:will|shall|to|is going to|needs to|need to|has to|have to|should|must|would|can|could|takes|owns|going to|also|then|next|and|so|just|you|i)\s+/i,"");
+    task = task.replace(/^(?:she|he|they)\s+(?:will|is going to|are going to|needs to|has to|have to)?\s*/i,"");
+  }
+  task = task.replace(/\b(?:as an action item|as a to-?do|action item|for sure)\b/gi," ");
+  if(dl){
+    var idx = task.toLowerCase().indexOf(dl.raw.toLowerCase());
+    if(idx !== -1) task = task.slice(0, idx) + " " + task.slice(idx + dl.raw.length);
+  }
+  task = task.replace(/\s+([,.;:])/g,"$1").replace(/,\s*,/g,",");
+  task = task.replace(/\s{2,}/g," ").trim();
+  task = task.replace(/[\s,;:.?—–-]+$/,"");
+  task = task.replace(/\s+(?:by|before|on|until|till|latest|starting|and|but|because|then|which|while|also|plus|with|to|for|from|in|at|of)$/i,"");
+  if(/\s+so$/i.test(task) && !/\bor\s+so$/i.test(task)) task = task.replace(/\s+so$/i,"");
+  task = task.replace(/[\s,;:.?—–-]+$/,"");
+  if(task.split(/\s+/).length < 3) return null;
+  if(TASK_REJECT_RES.test(task)) return null;
+  task = task.charAt(0).toUpperCase() + task.slice(1);
+
+  var priority = "Normal";
+  if(/\b(?:urgent|urgently|asap|immediately|critical|top priority|high priority|first thing|right away|today|tonight|eod|end of day|blocker|no extension|cannot repeat)\b/i.test(sentence)) priority = "High";
+  else if(dl) priority = "Medium";
+
+  return {
+    owner: owner,
+    task: task,
+    due: dl ? dl.display : "",
+    priority: priority,
+    context: finishSentence(sentence)
+  };
+}
+
+function generateMinutes(raw, opts){
+  opts = opts || {};
+  var level = opts.level || "balanced";
+  var maxPoints = level === "tight" ? 5 : (level === "full" ? 16 : 9);
+
+  var text = String(raw || "").replace(/\r\n?/g,"\n").replace(/\u00a0/g," ");
+  var lines = text.split("\n");
+
+  var meta = { title:"", date:"", attendeesRaw:"" };
+  var metaRe = /^\s*(subject|title|meeting|topic of meeting|date|day|time|attendees|present|participants|invitees|apologies|location|venue|agenda)\s*[:\-]\s*(.+)$/i;
+
+  var speakers = detectSpeakers(lines);
+  var speakerSet = {};
+  for(var i=0;i<speakers.length;i++) speakerSet[speakers[i].toLowerCase()] = speakers[i];
+
+  var speakerLineRe = /^\s*(?:[\[\(]?\s*\d{1,2}:\d{2}(?::\d{2})?\s*[\]\)]?\s*)?([A-Za-z][A-Za-z.'’-]*(?:\s+[A-Za-z][A-Za-z.'’-]*){0,2})\s*(?:\(([^)]{0,40})\))?\s*:\s+(.*)$/;
+
+  /* title from the first line, if it reads like one */
+  var titleLine = -1;
+  for(var f=0; f<lines.length; f++){
+    var L = lines[f].trim();
+    if(!L) continue;
+    if(metaRe.test(L)) break;
+    var isSpk = speakerLineRe.test(L) && speakerSet[(L.match(speakerLineRe)[1] || "").trim().toLowerCase()];
+    if(!isSpk && L.length <= 80 && L.split(/\s+/).length >= 2 && !/[.!?]$/.test(L) && !/^[-*•]/.test(L)){
+      meta.title = L.replace(/^#+\s*/,"").replace(/[:\-–—]\s*$/,"").trim();
+      titleLine = f;
+    }
+    break;
+  }
+
+  var units = [];
+  var currentHeading = "";
+
+  for(var li=0; li<lines.length; li++){
+    if(li === titleLine) continue;
+    var rawLine = lines[li];
+    var line = rawLine.trim();
+    if(!line) continue;
+
+    var mm = line.match(metaRe);
+    if(mm && mm[2] && !speakerSet[mm[1].toLowerCase()]){
+      var key = mm[1].toLowerCase(), val = mm[2].trim();
+      if((key === "subject" || key === "title" || key === "meeting" || key === "topic of meeting") && !meta.title){ meta.title = val; continue; }
+      if((key === "date" || key === "day") && !meta.date){ meta.date = val; continue; }
+      if((key === "attendees" || key === "present" || key === "participants" || key === "invitees") && !meta.attendeesRaw){ meta.attendeesRaw = val; continue; }
+      if(key === "time" || key === "location" || key === "venue" || key === "apologies" || key === "agenda"){ continue; }
+    }
+
+    var sm = line.match(speakerLineRe);
+    var speakerHere = null, body = line;
+    if(sm && speakerSet[sm[1].trim().toLowerCase()]){
+      speakerHere = speakerSet[sm[1].trim().toLowerCase()];
+      body = sm[3];
+    } else {
+      if(isHeading(line, lines[li+1])){
+        currentHeading = titleCaseHeading(cleanHeading(line));
+        continue;
+      }
+      body = stripTimestamp(line).replace(/^[-*•·▪>]+\s*/,"").replace(/^\d+[.)]\s+/,"");
+    }
+
+    var sents = splitSentences(body);
+    for(var si=0; si<sents.length; si++){
+      var chunks = chunkLong(sents[si]);
+      for(var ci=0; ci<chunks.length; ci++){
+        units.push({ speaker: speakerHere, heading: currentHeading, original: chunks[ci] });
+      }
+    }
+  }
+
+  if(!meta.title) meta.title = "Meeting minutes";
+  if(!meta.date){
+    var head = text.slice(0, 600);
+    var dm = head.match(new RegExp("\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:" + MONTHS + ")\\.?\\b(?:,?\\s+\\d{4})?","i"))
+          || head.match(new RegExp("\\b(?:" + MONTHS + ")\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?\\b","i"))
+          || head.match(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/);
+    if(dm) meta.date = dm[0].trim();
+  }
+
+  /* names that appear mid-sentence are real names, not sentence-openers */
+  var midCap = {};
+  for(var u0=0; u0<units.length; u0++){
+    var toks = units[u0].original.split(/\s+/);
+    for(var t0=1; t0<toks.length; t0++){
+      var prev = toks[t0-1];
+      if(/[.!?:]$/.test(prev)) continue;
+      var w = toks[t0].replace(/^[^A-Za-z]+|[^A-Za-z'’-]+$/g,"");
+      if(!/^[A-Z][a-z'’-]{1,20}$/.test(w)) continue;
+      if(isStopName(w)) continue;
+      if(LABEL_WORDS.indexOf(w.toLowerCase()) !== -1) continue;
+      midCap[w.toLowerCase()] = w;
+    }
+  }
+
+  var people = [];
+  function addPerson(p){
+    if(!p) return;
+    p = String(p).replace(/\(([^)]*)\)/g,"").replace(/[^A-Za-z'’.\- ]/g," ").replace(/\s{2,}/g," ").trim();
+    if(!p || p === "Team" || p === "Unassigned") return;
+    if(p.split(/\s+/).length > 3) return;
+    if(LABEL_WORDS.indexOf(p.toLowerCase()) !== -1 || isStopName(p)) return;
+    for(var i=0;i<people.length;i++) if(people[i].toLowerCase() === p.toLowerCase()) return;
+    people.push(p);
+  }
+  for(var s2=0; s2<speakers.length; s2++) addPerson(speakers[s2]);
+  if(meta.attendeesRaw){
+    var parts = meta.attendeesRaw.split(/[,;]|\band\b|\/|\|/i);
+    for(var p2=0; p2<parts.length; p2++) addPerson(parts[p2]);
+  }
+  var knownLower = {};
+  for(var kk=0; kk<people.length; kk++) knownLower[people[kk].toLowerCase()] = 1;
+
+  function isName(w){
+    if(!w) return false;
+    var lw = String(w).toLowerCase();
+    if(isStopName(lw) || LABEL_WORDS.indexOf(lw) !== -1) return false;
+    if(!nameShape(w)) return false;
+    if(knownLower[lw]) return true;
+    return !!midCap[lw];
+  }
+
+  var discussionMap = {}, discussionOrder = [];
+  var decisions = [], risks = [], questions = [], nextSteps = [];
+  var actions = [], actionKeys = {};
+  var infoCandidates = [];
+  var deadlinesSeen = [], deadlineKeys = {};
+  var lastMentioned = null;
+  var AGENDA_RES = /\b(?:things? (?:i|we) want to cover|want to cover|let'?s cover|on the agenda|first up|to cover today)\b/i;
+
+  for(var u=0; u<units.length; u++){
+    var unit = units[u];
+    var orig = unit.original;
+    if(!orig) continue;
+    var cleaned = cleanText(orig);
+    if(!cleaned || cleaned.replace(/[^a-z]/gi,"").length < 10) continue;
+    if(SMALLTALK_RES.test(cleaned) && cleaned.length < 70) continue;
+
+    var isQ = /\?\s*$/.test(cleaned);
+    var strong = hits(cleaned, ACTION_STRONG);
+    var weak = hits(cleaned, ACTION_WEAK);
+    var dScore = hits(cleaned, DECISION_RES);
+    var rScore = hits(cleaned, RISK_RES);
+    var qScore = hits(cleaned, QUESTION_RES) + (isQ ? 1 : 0);
+    var nScore = hits(cleaned, NEXTSTEP_RES);
+
+    var used = false, madeAction = false;
+
+    var noDecision = /\bno decision (?:taken|yet|made|so far)\b/i.test(cleaned);
+    if(noDecision) dScore = 0;
+    if(dScore > 0){
+      var dtxt = cleaned.replace(/^(?:we (?:have )?(?:decided|agreed)(?: that| to| on)?|it was (?:decided|agreed)(?: that)?|we'?ve (?:decided|agreed)(?: to| that)?|decided(?: that| to| on)?:?|decision:?|the decision is|we'?re going with|we'?ve locked in)\s*/i,"");
+      dtxt = dtxt.replace(/^(?:last week|last month|last time|earlier|yesterday|in the last call|on the call)\s+that\s+/i,"");
+      dtxt = dtxt.replace(/^[\s,;:.-]+/,"");
+      if(dtxt.length > 12){
+        dtxt = dtxt.charAt(0).toUpperCase() + dtxt.slice(1);
+        if(pushUnique(decisions, dtxt)) used = true;
+      }
+    }
+
+    var commits = /\b(?:i|we|he|she|they|[A-Z][a-z'’-]+)\s+(?:will|are going to|is going to|am going to|need to|needs to|have to|has to|should)\b/.test(cleaned);
+    var actionable = (strong > 0 || (weak > 0 && findDeadline(cleaned) && commits)) && !noDecision;
+    if(noDecision && pushUnique(questions, cleaned)) used = true;
+    if(actionable && nScore === 0){
+      var act = extractAction(cleaned, unit.speaker, isName);
+      if(act){
+        if(act.owner === "Unassigned" && lastMentioned && /\b(?:she|he|they)\s+(?:will|is going to|needs to|has to|is|are)\b/i.test(cleaned)) act.owner = lastMentioned;
+        var skip = (dScore > 0 && (act.owner === "Team" || act.owner === "Unassigned"));
+        if(!skip){
+          var key = act.task.toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,44);
+          if(!actionKeys[key]){
+            actionKeys[key] = 1;
+            actions.push(act);
+            addPerson(act.owner);
+            if(act.due && !deadlineKeys[act.due.toLowerCase()]){ deadlineKeys[act.due.toLowerCase()] = 1; deadlinesSeen.push(act.due); }
+          }
+          used = true;
+          madeAction = true;
+        }
+      }
+    }
+
+    if(rScore > 0 && dScore === 0 && !AGENDA_RES.test(cleaned) && (!madeAction || rScore >= 2)){
+      if(pushUnique(risks, cleaned)) used = true;
+    }
+
+    if(qScore > 0 && !madeAction && dScore === 0 && cleaned.length >= 24){
+      if(pushUnique(questions, cleaned)) used = true;
+    }
+
+    if(nScore > 0){
+      var ntxt = cleaned;
+      if(ntxt.split(/\s+/).length > 34) ntxt = ntxt.split(/,\s*/).slice(-2).join(", ");
+      ntxt = ntxt.charAt(0).toUpperCase() + ntxt.slice(1);
+      if(pushUnique(nextSteps, ntxt)) used = true;
+    }
+
+    if(!used){
+      var score = 0;
+      var wc = cleaned.split(/\s+/).length;
+      if(wc >= 7) score += 2;
+      if(wc >= 12) score += 1;
+      if(wc > 48) score -= 1;
+      if(/\d/.test(cleaned)) score += 2;
+      if(/%|\bpercent\b|₹|\brs\.?\s?\d|\$|\blakh\b|\bcrore\b|\b\d+k\b/i.test(cleaned)) score += 2;
+      var low = cleaned.toLowerCase();
+      for(var t2=0; t2<TOPIC_HINT_WORDS.length; t2++){
+        if(low.indexOf(TOPIC_HINT_WORDS[t2]) !== -1){ score += 1; break; }
+      }
+      if(/^(?:that|this|it|they|he|she)\b/i.test(cleaned)) score -= 1;
+      if(AGENDA_RES.test(cleaned)) score = 0;
+      if(/^(?:which|and|but|so|then|where|while|because|plus|though|although|has|had)\b/i.test(cleaned)) score = 0;
+      if(score >= 3) infoCandidates.push({ heading: unit.heading || "", text: cleaned, score: score, idx: u });
+    }
+
+    var tks = cleaned.split(/\s+/);
+    for(var tk=0; tk<tks.length; tk++){
+      var cw = tks[tk].replace(/^[^A-Za-z]+|[^A-Za-z'’-]+$/g,"");
+      if(isName(cw)) lastMentioned = cw;
+    }
+  }
+
+  infoCandidates.sort(function(a,b){ return b.score - a.score || a.idx - b.idx; });
+  var chosen = [];
+  for(var c=0; c<infoCandidates.length && chosen.length < maxPoints; c++){
+    var cand = infoCandidates[c];
+    var dup = false;
+    for(var z=0; z<chosen.length; z++){ if(jaccard(chosen[z].text, cand.text) > 0.6){ dup = true; break; } }
+    if(!dup) chosen.push(cand);
+  }
+  chosen.sort(function(a,b){ return a.idx - b.idx; });
+  for(var ch=0; ch<chosen.length; ch++){
+    var h = chosen[ch].heading || "Discussion";
+    if(!discussionMap[h]){ discussionMap[h] = []; discussionOrder.push(h); }
+    discussionMap[h].push(finishSentence(chosen[ch].text));
+  }
+
+  var capD = level === "tight" ? 6 : (level === "full" ? 20 : 10);
+  decisions = decisions.slice(0, capD);
+  risks = risks.slice(0, capD);
+  questions = questions.slice(0, capD);
+  nextSteps = nextSteps.slice(0, 5);
+
+  var owners = {};
+  for(var a2=0; a2<actions.length; a2++) owners[actions[a2].owner] = 1;
+  var ownerCount = Object.keys(owners).length;
+
+  var glance = [];
+  if(people.length) glance.push(people.length + " " + (people.length === 1 ? "person" : "people") + " named: " + people.slice(0,10).join(", ") + (people.length > 10 ? " and others" : ""));
+  glance.push(actions.length + " action " + (actions.length === 1 ? "item" : "items") + (ownerCount ? " across " + ownerCount + " " + (ownerCount === 1 ? "owner" : "owners") : ""));
+  if(decisions.length) glance.push(decisions.length + " " + (decisions.length === 1 ? "decision" : "decisions") + " recorded");
+  if(risks.length) glance.push(risks.length + " " + (risks.length === 1 ? "risk or blocker" : "risks and blockers") + " raised");
+  if(questions.length) glance.push(questions.length + " open " + (questions.length === 1 ? "question" : "questions"));
+  if(deadlinesSeen.length) glance.push("Dates mentioned: " + deadlinesSeen.slice(0,6).join(", "));
+
+  return {
+    title: meta.title,
+    date: meta.date,
+    people: people,
+    glance: glance,
+    discussionOrder: discussionOrder,
+    discussion: discussionMap,
+    decisions: decisions,
+    actions: actions,
+    risks: risks,
+    questions: questions,
+    nextSteps: nextSteps,
+    counts: { actions: actions.length, decisions: decisions.length, risks: risks.length, questions: questions.length }
+  };
+}
+
+/* ---------- plain text + markdown builders ---------- */
+
+function toPlainText(m){
+  var L = [];
+  L.push("MINUTES OF MEETING");
+  L.push(m.title);
+  if(m.date) L.push("Date: " + m.date);
+  if(m.people.length) L.push("Present: " + m.people.join(", "));
+  L.push("");
+  L.push("AT A GLANCE");
+  for(var g=0; g<m.glance.length; g++) L.push("  - " + m.glance[g]);
+
+  if(m.discussionOrder.length){
+    L.push("");
+    L.push("DISCUSSION");
+    for(var d=0; d<m.discussionOrder.length; d++){
+      var h = m.discussionOrder[d];
+      if(m.discussionOrder.length > 1 || h !== "Discussion") L.push("  " + h);
+      var pts = m.discussion[h];
+      for(var p=0; p<pts.length; p++) L.push("    - " + pts[p]);
+    }
+  }
+  if(m.decisions.length){
+    L.push("");
+    L.push("DECISIONS");
+    for(var i=0; i<m.decisions.length; i++) L.push("  - " + m.decisions[i]);
+  }
+  if(m.actions.length){
+    L.push("");
+    L.push("ACTION ITEMS");
+    for(var a=0; a<m.actions.length; a++){
+      var it = m.actions[a];
+      L.push("  " + (a+1) + ". " + it.owner + " — " + it.task + (it.due ? "  [due: " + it.due + "]" : "") + (it.priority !== "Normal" ? "  (" + it.priority + ")" : ""));
+    }
+  }
+  if(m.risks.length){
+    L.push("");
+    L.push("RISKS AND BLOCKERS");
+    for(var r=0; r<m.risks.length; r++) L.push("  - " + m.risks[r]);
+  }
+  if(m.questions.length){
+    L.push("");
+    L.push("OPEN QUESTIONS");
+    for(var q=0; q<m.questions.length; q++) L.push("  - " + m.questions[q]);
+  }
+  if(m.nextSteps.length){
+    L.push("");
+    L.push("NEXT STEPS");
+    for(var n=0; n<m.nextSteps.length; n++) L.push("  - " + m.nextSteps[n]);
+  }
+  L.push("");
+  return L.join("\n");
+}
+
+function toMarkdown(m){
+  var L = [];
+  L.push("# " + m.title);
+  var sub = [];
+  if(m.date) sub.push("**Date:** " + m.date);
+  if(m.people.length) sub.push("**Present:** " + m.people.join(", "));
+  if(sub.length) L.push(sub.join("  \n"));
+  L.push("");
+  L.push("## At a glance");
+  for(var g=0; g<m.glance.length; g++) L.push("- " + m.glance[g]);
+  if(m.discussionOrder.length){
+    L.push("");
+    L.push("## Discussion");
+    for(var d=0; d<m.discussionOrder.length; d++){
+      var h = m.discussionOrder[d];
+      if(m.discussionOrder.length > 1 || h !== "Discussion") L.push("### " + h);
+      var pts = m.discussion[h];
+      for(var p=0; p<pts.length; p++) L.push("- " + pts[p]);
+    }
+  }
+  if(m.decisions.length){
+    L.push("");
+    L.push("## Decisions");
+    for(var i=0; i<m.decisions.length; i++) L.push("- " + m.decisions[i]);
+  }
+  if(m.actions.length){
+    L.push("");
+    L.push("## Action items");
+    L.push("");
+    L.push("| Owner | Task | Due | Priority |");
+    L.push("| --- | --- | --- | --- |");
+    for(var a=0; a<m.actions.length; a++){
+      var it = m.actions[a];
+      L.push("| " + it.owner + " | " + it.task.replace(/\|/g,"/") + " | " + (it.due || "—") + " | " + it.priority + " |");
+    }
+  }
+  if(m.risks.length){
+    L.push("");
+    L.push("## Risks and blockers");
+    for(var r=0; r<m.risks.length; r++) L.push("- " + m.risks[r]);
+  }
+  if(m.questions.length){
+    L.push("");
+    L.push("## Open questions");
+    for(var q=0; q<m.questions.length; q++) L.push("- " + m.questions[q]);
+  }
+  if(m.nextSteps.length){
+    L.push("");
+    L.push("## Next steps");
+    for(var n=0; n<m.nextSteps.length; n++) L.push("- " + m.nextSteps[n]);
+  }
+  L.push("");
+  return L.join("\n");
+}
+
+/* ---------- minimal xlsx writer (stored zip, no deps) ---------- */
+
+var CRC_TABLE = (function(){
+  var t = new Array(256);
+  for(var n=0; n<256; n++){
+    var c = n;
+    for(var k=0; k<8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes){
+  var c = 0xFFFFFFFF;
+  for(var i=0; i<bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function strToBytes(str){
+  var out = [], i, c;
+  for(i=0; i<str.length; i++){
+    c = str.charCodeAt(i);
+    if(c < 0x80) out.push(c);
+    else if(c < 0x800){ out.push(0xC0 | (c >> 6), 0x80 | (c & 63)); }
+    else if(c < 0xD800 || c >= 0xE000){ out.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }
+    else {
+      i++;
+      var cp = 0x10000 + (((c & 0x3FF) << 10) | (str.charCodeAt(i) & 0x3FF));
+      out.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+    }
+  }
+  return new Uint8Array(out);
+}
+
+function zipStore(files){
+  var chunks = [], central = [], offset = 0;
+  function u16(n){ return [n & 255, (n >> 8) & 255]; }
+  function u32(n){ return [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255]; }
+
+  for(var i=0; i<files.length; i++){
+    var nameBytes = strToBytes(files[i].name);
+    var data = files[i].data;
+    var crc = crc32(data);
+    var local = [].concat([0x50,0x4B,0x03,0x04], u16(20), u16(0), u16(0), u16(0), u16(0),
+                          u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length), u16(0));
+    chunks.push(new Uint8Array(local), nameBytes, data);
+    central.push({ nameBytes: nameBytes, crc: crc, size: data.length, offset: offset });
+    offset += local.length + nameBytes.length + data.length;
+  }
+
+  var cdChunks = [], cdSize = 0;
+  for(var j=0; j<central.length; j++){
+    var e = central[j];
+    var hdr = [].concat([0x50,0x4B,0x01,0x02], u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+                        u32(e.crc), u32(e.size), u32(e.size), u16(e.nameBytes.length),
+                        u16(0), u16(0), u16(0), u16(0), u32(0), u32(e.offset));
+    cdChunks.push(new Uint8Array(hdr), e.nameBytes);
+    cdSize += hdr.length + e.nameBytes.length;
+  }
+  var end = [].concat([0x50,0x4B,0x05,0x06], u16(0), u16(0), u16(central.length), u16(central.length),
+                      u32(cdSize), u32(offset), u16(0));
+  cdChunks.push(new Uint8Array(end));
+
+  var total = offset + cdSize + end.length;
+  var out = new Uint8Array(total), pos = 0, all = chunks.concat(cdChunks);
+  for(var k=0; k<all.length; k++){ out.set(all[k], pos); pos += all[k].length; }
+  return out;
+}
+
+function xmlEsc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&apos;")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,"");
+}
+
+function colLetter(n){
+  var s = "";
+  n = n + 1;
+  while(n > 0){ var r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+function sheetXml(rows, widths){
+  var cols = "";
+  if(widths && widths.length){
+    cols = "<cols>";
+    for(var w=0; w<widths.length; w++) cols += '<col min="' + (w+1) + '" max="' + (w+1) + '" width="' + widths[w] + '" customWidth="1"/>';
+    cols += "</cols>";
+  }
+  var body = "";
+  for(var r=0; r<rows.length; r++){
+    body += '<row r="' + (r+1) + '"' + (r === 0 ? ' ht="20" customHeight="1"' : '') + '>';
+    for(var c=0; c<rows[r].length; c++){
+      var v = rows[r][c];
+      if(v === null || v === undefined || v === "") continue;
+      var style = r === 0 ? ' s="1"' : ' s="2"';
+      body += '<c r="' + colLetter(c) + (r+1) + '" t="inlineStr"' + style + '><is><t xml:space="preserve">' + xmlEsc(v) + '</t></is></c>';
+    }
+    body += '</row>';
+  }
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    + '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+    + cols + '<sheetData>' + body + '</sheetData></worksheet>';
+}
+
+function buildXlsx(sheets){
+  var files = [];
+  var types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    + '<Default Extension="xml" ContentType="application/xml"/>'
+    + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+    + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+  var wbSheets = "", wbRels = "";
+  for(var i=0; i<sheets.length; i++){
+    types += '<Override PartName="/xl/worksheets/sheet' + (i+1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+    wbSheets += '<sheet name="' + xmlEsc(sheets[i].name.slice(0,31)) + '" sheetId="' + (i+1) + '" r:id="rId' + (i+1) + '"/>';
+    wbRels += '<Relationship Id="rId' + (i+1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i+1) + '.xml"/>';
+    files.push({ name: "xl/worksheets/sheet" + (i+1) + ".xml", data: strToBytes(sheetXml(sheets[i].rows, sheets[i].widths)) });
+  }
+  types += '</Types>';
+  wbRels += '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>';
+
+  var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+    + '</Relationships>';
+
+  var workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    + '<sheets>' + wbSheets + '</sheets></workbook>';
+
+  var workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + wbRels + '</Relationships>';
+
+  var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    + '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>'
+    + '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts>'
+    + '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
+    + '<fill><patternFill patternType="solid"><fgColor rgb="FF12222E"/><bgColor indexed="64"/></patternFill></fill></fills>'
+    + '<borders count="1"><border/></borders>'
+    + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    + '<cellXfs count="3">'
+    + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    + '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf>'
+    + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
+    + '</cellXfs>'
+    + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+
+  files.unshift({ name: "xl/styles.xml", data: strToBytes(styles) });
+  files.unshift({ name: "xl/_rels/workbook.xml.rels", data: strToBytes(workbookRels) });
+  files.unshift({ name: "xl/workbook.xml", data: strToBytes(workbook) });
+  files.unshift({ name: "_rels/.rels", data: strToBytes(rels) });
+  files.unshift({ name: "[Content_Types].xml", data: strToBytes(types) });
+  return zipStore(files);
+}
+
+function minutesToSheets(m){
+  var sheets = [];
+
+  var summary = [["Field","Detail"]];
+  summary.push(["Meeting", m.title]);
+  if(m.date) summary.push(["Date", m.date]);
+  if(m.people.length) summary.push(["Present", m.people.join(", ")]);
+  summary.push(["Action items", String(m.counts.actions)]);
+  summary.push(["Decisions", String(m.counts.decisions)]);
+  summary.push(["Risks and blockers", String(m.counts.risks)]);
+  summary.push(["Open questions", String(m.counts.questions)]);
+  for(var g=0; g<m.glance.length; g++) summary.push([g === 0 ? "At a glance" : "", m.glance[g]]);
+  sheets.push({ name: "Summary", rows: summary, widths: [22, 90] });
+
+  var acts = [["#","Owner","Task","Due","Priority","Said in the meeting"]];
+  for(var a=0; a<m.actions.length; a++){
+    var it = m.actions[a];
+    acts.push([String(a+1), it.owner, it.task, it.due || "", it.priority, it.context]);
+  }
+  if(m.actions.length === 0) acts.push(["","","No action items detected","","",""]);
+  sheets.push({ name: "Action items", rows: acts, widths: [5, 16, 62, 18, 11, 70] });
+
+  var dec = [["#","Decision"]];
+  for(var d=0; d<m.decisions.length; d++) dec.push([String(d+1), m.decisions[d]]);
+  if(!m.decisions.length) dec.push(["","No decisions detected"]);
+  sheets.push({ name: "Decisions", rows: dec, widths: [5, 100] });
+
+  var dis = [["Topic","Point"]];
+  for(var i=0; i<m.discussionOrder.length; i++){
+    var h = m.discussionOrder[i], pts = m.discussion[h];
+    for(var p=0; p<pts.length; p++) dis.push([p === 0 ? h : "", pts[p]]);
+  }
+  if(dis.length === 1) dis.push(["","No discussion points detected"]);
+  sheets.push({ name: "Discussion", rows: dis, widths: [26, 95] });
+
+  var open = [["Type","Detail"]];
+  for(var r=0; r<m.risks.length; r++) open.push(["Risk or blocker", m.risks[r]]);
+  for(var q=0; q<m.questions.length; q++) open.push(["Open question", m.questions[q]]);
+  for(var n=0; n<m.nextSteps.length; n++) open.push(["Next step", m.nextSteps[n]]);
+  if(open.length === 1) open.push(["","Nothing flagged"]);
+  sheets.push({ name: "Risks and questions", rows: open, widths: [20, 100] });
+
+  return sheets;
+}
+
+/* ==================== ENGINE END ==================== */
+
+/* ==================== SAMPLES ==================== */
+var SAMPLES = {};
+
+SAMPLES.a = [
+"Weekly Growth Review - September Masterclass",
+"Date: 3 September 2026",
+"Attendees: Hardik, Neha, Rohan, Priya, Faizal",
+"",
+"[00:00:14] Hardik: Okay, um, can everyone hear me? Great. So let's, uh, let's get started, we only have about thirty minutes today.",
+"[00:00:39] Hardik: The three things I want to cover are the September masterclass numbers, the ad spend, and then the payment failure issue that Priya flagged yesterday.",
+"[00:01:06] Neha: Yeah so on registrations, we are at 1,840 as of this morning. Last cycle at the same point we were at roughly 1,200, so we're about 50 percent up.",
+"[00:01:31] Neha: But, um, the show-up rate is the worry. Last time only 38 percent of registrants actually joined the live session and I think that number is going to drop again if we don't fix the reminder flow.",
+"[00:02:02] Hardik: Right. So what's broken in the reminder flow exactly?",
+"[00:02:11] Neha: Basically the WhatsApp reminder is going out at 9 am on the day itself, which is, you know, too late. People are already at work.",
+"[00:02:28] Neha: I'll rewrite the reminder sequence so it goes out at T minus 24 hours, T minus 2 hours and T minus 10 minutes. I can have that ready by Thursday.",
+"[00:02:51] Hardik: Good. Rohan, can you check whether our WhatsApp provider actually supports scheduled sends at that granularity?",
+"[00:03:03] Rohan: Yeah I'll check with the provider today and revert by tomorrow evening.",
+"[00:03:19] Hardik: Okay. Moving to ad spend.",
+"[00:03:26] Faizal: So we've spent 2.4 lakh so far this month against a budget of 3 lakh. Cost per registration is sitting at 130 rupees, which is up from 108 last month.",
+"[00:03:52] Faizal: The creative fatigue is real, the top two ads have been running for nineteen days now and the CTR has dropped from 2.1 percent to 1.3 percent.",
+"[00:04:15] Hardik: Fine, so we agreed last week that we'd refresh creatives every fifteen days and that clearly didn't happen. Faizal, you'll need to ship four new creatives before Monday.",
+"[00:04:38] Faizal: Yeah that's fair. I'll get four variants out, two video and two static, by Sunday night.",
+"[00:04:50] Priya: Sorry to jump in, um, the payment thing is a bit urgent.",
+"[00:05:02] Priya: Since Friday we've had 47 failed transactions on the checkout page, all of them on UPI. The gateway support team hasn't responded to my ticket in three days.",
+"[00:05:24] Hardik: Three days? That's not acceptable. How much revenue are we talking about?",
+"[00:05:33] Priya: Roughly 1.9 lakh in blocked payments.",
+"[00:05:41] Hardik: Okay this is the top priority. Priya, please escalate to the account manager directly today and copy me on the mail.",
+"[00:05:56] Priya: Will do. I'll also set up a backup payment link with the secondary gateway as a fallback, that should take me a day or so.",
+"[00:06:14] Rohan: Do we want to show both options on checkout or only switch if the primary fails?",
+"[00:06:26] Hardik: Good question, I'm not sure yet. Let's decide once we see whether the gateway fixes it this week.",
+"[00:06:44] Hardik: Last thing, the decision on the Power BI add-on module. I think we're going ahead with it, we'll price it at 999 as an upsell after the main workshop.",
+"[00:07:05] Neha: Agreed. I'll draft the upsell page copy by next Wednesday.",
+"[00:07:16] Hardik: Perfect. And Rohan, we need to finalise the hiring for the support executive role, we've been sitting on those three CVs for two weeks now.",
+"[00:07:34] Rohan: I'll schedule interviews for all three candidates next week and share feedback by the 15th.",
+"[00:07:47] Hardik: Great, let's meet again same time next Thursday. Thanks everyone.",
+"[00:07:55] Neha: Thanks, bye."
+].join("\n");
+
+SAMPLES.b = [
+"ok so this was the call with the vendor and the internal team on thursday afternoon it ran long and i was typing while listening so this is all over the place but basically the first thing that came up was the warehouse situation in bhiwandi where we are paying 85000 a month for a space we are using maybe 40 percent of and Sameer made the point that if we consolidate into the smaller unit we save about 30k a month which is 3.6 lakh a year and he will get the revised quotation from the landlord by friday so we can compare properly, then there was a long discussion about the delivery partner because complaints have gone up a lot last month we had 22 complaints about late delivery which is nearly double the month before and Ankita said most of them are from the tier 2 cities where our current partner uses a third party for last mile which we have no visibility into, she is going to pull the city wise complaint data and share it before the next review, we also discussed switching partners entirely and got quotes from two players one is about 12 percent cheaper but has a 45 day payment cycle and the other is slightly more expensive but settles weekly, no decision taken yet we said we will decide after seeing the city data, ",
+"then Meera raised the packaging cost issue apparently the corrugated box prices went up 9 percent in august and our margin on the smaller SKUs is now under 18 percent which is below the threshold we set, she suggested moving to a lighter grade box for anything under 500 grams and she needs to test whether it survives transit so she will run a 50 shipment trial starting next week and report back in two weeks, ",
+"the vendor also brought up the pending payment of 2.4 lakh from july which honestly is on us, finance has the invoice but there was a mismatch in the GST number so it got stuck, i told them we will clear it by the 15th and Rakesh has to coordinate with the vendor to get a corrected invoice raised, this is urgent because they have threatened to hold the next dispatch, ",
+"other things that came up, the ERP migration is behind schedule we were supposed to go live on 1 september and now it looks like october, the main blocker is that the historical data from the old system has duplicate customer records about 4000 of them and nobody has owned the cleanup, we agreed that Ankita will own the data cleanup with support from the vendor team and we will do a fresh go live assessment on 20 september, ",
+"also i should mention we are hiring one more person for the warehouse ops role, two candidates shortlisted, Sameer will do the final round interviews this week and we want someone joining by 1 october, ",
+"open point that we did not resolve is whether we absorb the packaging cost increase or pass it to customers, Meera thinks passing it will hurt conversion on the entry products, we will revisit this in the next monthly review, ",
+"one more thing the insurance renewal for the warehouse is due on 28 september and nobody has looked at it yet, i will handle that myself"
+].join("\n");
+
+SAMPLES.c = [
+"Client review - Mehta & Associates account",
+"Date: 05/09/2026",
+"Present: Hardik, Divya, Karan",
+"",
+"Scope and deliverables",
+"- client unhappy w/ turnaround on monthly reports, currently 12 working days, they want 5",
+"- Divya to map the current reporting process step by step and identify where the delay sits, by 12 Sept",
+"- most of the delay is waiting for data from their finance team, not our end - need to raise this politely",
+"- Karan will draft a short note to the client explaining the dependency, share draft with me before sending",
+"",
+"Commercials",
+"- retainer is 45k/month, unchanged for 2 yrs",
+"- scope has grown - 3 extra entities added last yr, no revision",
+"- decided: we will propose a revised retainer of 62k effective 1 Oct",
+"- Hardik to prepare the revised scope + fee note by 20 Sept",
+"- risk: client may push back hard, they mentioned budget pressure in the last call",
+"",
+"Team",
+"- Divya is stretched across 4 accounts, this is not sustainable",
+"- agreed to move the Sharma account off her plate to Karan from next month",
+"- open question: do we hire a junior now or wait till the retainer revision is confirmed?",
+"",
+"Compliance",
+"- 2 TDS returns pending for Q1, due 30 Sept, penalty if missed",
+"- Karan to file both returns by 25 Sept, no extension this time",
+"- last yr we missed the deadline and paid 12k in late fees, cannot repeat",
+"",
+"Misc",
+"- client asked about GST advisory as an add-on, we are not offering it yet",
+"- revisit in the next review on 3 Oct"
+].join("\n");
+
+/* ==================== UI ==================== */
+(function(){
+  var srcEl = document.getElementById("src");
+  var outEl = document.getElementById("out");
+  var goBtn = document.getElementById("goBtn");
+  var wordEl = document.getElementById("wordCount");
+  var toastEl = document.getElementById("toast");
+  var level = "balanced";
+  var current = null;
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(function(){ toastEl.classList.remove("show"); }, 2000);
+  }
+
+  function updateCount(){
+    var w = srcEl.value.trim() ? srcEl.value.trim().split(/\s+/).length : 0;
+    wordEl.textContent = w.toLocaleString() + (w === 1 ? " word" : " words");
+  }
+
+  function setExports(on){
+    ["copyBtn","txtBtn","xlsBtn","mdBtn"].forEach(function(id){ document.getElementById(id).disabled = !on; });
+  }
+
+  function slug(s){
+    return (s || "minutes").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,48) || "minutes";
+  }
+
+  function download(name, blob){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+  }
+
+  function render(m){
+    var h = "";
+    h += '<p class="title">' + esc(m.title) + '</p>';
+    var subBits = [];
+    if(m.date) subBits.push("Date: " + m.date);
+    if(m.people.length) subBits.push("Present: " + m.people.join(", "));
+    if(subBits.length) h += '<p class="subtitle">' + esc(subBits.join("  |  ")) + '</p>';
+
+    h += '<h3>At a glance</h3><ul>';
+    for(var g=0; g<m.glance.length; g++) h += "<li>" + esc(m.glance[g]) + "</li>";
+    h += "</ul>";
+
+    if(m.discussionOrder.length){
+      h += "<h3>Discussion</h3>";
+      for(var d=0; d<m.discussionOrder.length; d++){
+        var head = m.discussionOrder[d];
+        if(m.discussionOrder.length > 1 || head !== "Discussion") h += '<p class="topic">' + esc(head) + "</p>";
+        h += "<ul>";
+        var pts = m.discussion[head];
+        for(var p=0; p<pts.length; p++) h += "<li>" + esc(pts[p]) + "</li>";
+        h += "</ul>";
+      }
+    }
+
+    if(m.decisions.length){
+      h += "<h3>Decisions</h3><ul>";
+      for(var i=0; i<m.decisions.length; i++) h += "<li>" + esc(m.decisions[i]) + "</li>";
+      h += "</ul>";
+    }
+
+    h += "<h3>Action items</h3>";
+    if(m.actions.length){
+      h += '<table class="acts"><thead><tr><th>Owner</th><th>Task</th><th>Due</th><th>Priority</th></tr></thead><tbody>';
+      for(var a=0; a<m.actions.length; a++){
+        var it = m.actions[a];
+        var cls = it.priority === "High" ? "high" : (it.priority === "Medium" ? "med" : "norm");
+        h += "<tr><td>" + esc(it.owner) + "</td><td>" + esc(it.task) + '</td><td class="due">' + esc(it.due || "—") + '</td><td><span class="pri ' + cls + '">' + esc(it.priority) + "</span></td></tr>";
+      }
+      h += "</tbody></table>";
+    } else {
+      h += '<p class="none">No clear tasks found. Action items are picked up from phrases like "Priya will send the deck by Friday".</p>';
+    }
+
+    if(m.risks.length){
+      h += "<h3>Risks and blockers</h3><ul>";
+      for(var r=0; r<m.risks.length; r++) h += "<li>" + esc(m.risks[r]) + "</li>";
+      h += "</ul>";
+    }
+    if(m.questions.length){
+      h += "<h3>Open questions</h3><ul>";
+      for(var q=0; q<m.questions.length; q++) h += "<li>" + esc(m.questions[q]) + "</li>";
+      h += "</ul>";
+    }
+    if(m.nextSteps.length){
+      h += "<h3>Next steps</h3><ul>";
+      for(var n=0; n<m.nextSteps.length; n++) h += "<li>" + esc(m.nextSteps[n]) + "</li>";
+      h += "</ul>";
+    }
+    outEl.innerHTML = h;
+  }
+
+  function run(){
+    var raw = srcEl.value;
+    if(!raw.trim()){
+      outEl.innerHTML = '<p class="empty">There is nothing in the box yet. Paste your notes or load one of the samples above.</p>';
+      setExports(false);
+      return;
+    }
+    goBtn.disabled = true;
+    goBtn.textContent = "Working";
+    setTimeout(function(){
+      try{
+        current = generateMinutes(raw, { level: level });
+        render(current);
+        setExports(true);
+        outEl.scrollIntoView({ block: "nearest" });
+      } catch(err){
+        outEl.innerHTML = '<p class="empty">That text could not be read. Try removing unusual symbols or splitting it into smaller chunks.</p>';
+        setExports(false);
+      }
+      goBtn.disabled = false;
+      goBtn.textContent = "Create minutes";
+    }, 20);
+  }
+
+  goBtn.addEventListener("click", run);
+  srcEl.addEventListener("input", updateCount);
+
+  document.querySelectorAll(".seg button").forEach(function(b){
+    b.addEventListener("click", function(){
+      document.querySelectorAll(".seg button").forEach(function(x){ x.setAttribute("aria-pressed","false"); });
+      b.setAttribute("aria-pressed","true");
+      level = b.getAttribute("data-level");
+      if(current) run();
+    });
+  });
+
+  document.querySelectorAll("[data-demo]").forEach(function(b){
+    b.addEventListener("click", function(){
+      srcEl.value = SAMPLES[b.getAttribute("data-demo")];
+      updateCount();
+      run();
+    });
+  });
+
+  document.getElementById("clearBtn").addEventListener("click", function(){
+    srcEl.value = "";
+    updateCount();
+    current = null;
+    setExports(false);
+    outEl.innerHTML = '<p class="empty">Cleared. Paste the next set of notes whenever you are ready.</p>';
+    srcEl.focus();
+  });
+
+  document.getElementById("copyBtn").addEventListener("click", function(){
+    if(!current) return;
+    var text = toPlainText(current);
+    function fallback(){
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand("copy"); toast("Minutes copied"); }
+      catch(e){ toast("Copy blocked by the browser, use Save .txt"); }
+      document.body.removeChild(ta);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ toast("Minutes copied"); }, fallback);
+    } else fallback();
+  });
+
+  document.getElementById("txtBtn").addEventListener("click", function(){
+    if(!current) return;
+    download(slug(current.title) + ".txt", new Blob([toPlainText(current)], { type: "text/plain;charset=utf-8" }));
+    toast("Text file saved");
+  });
+
+  document.getElementById("mdBtn").addEventListener("click", function(){
+    if(!current) return;
+    download(slug(current.title) + ".md", new Blob([toMarkdown(current)], { type: "text/markdown;charset=utf-8" }));
+    toast("Markdown file saved");
+  });
+
+  document.getElementById("xlsBtn").addEventListener("click", function(){
+    if(!current) return;
+    var bytes = buildXlsx(minutesToSheets(current));
+    download(slug(current.title) + ".xlsx", new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    toast("Excel file saved");
+  });
+
+  updateCount();
+})();
+</script>
+</body>
+</html>

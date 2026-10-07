@@ -1,0 +1,2247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>InstantDash — Excel to Dashboard</title>
+
+<!-- ============================================================
+     LIBRARIES (loaded from CDN, no build step required)
+     SheetJS  : reads .xlsx / .xls / .csv entirely in the browser
+     Chart.js : draws every chart on this page
+     ============================================================ -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   DESIGN TOKENS  →  edit these to re-skin the whole app
+   ============================================================ */
+:root{
+  --bg:      #F4EDE2;   /* cream page background */
+  --card:    #FFFFFF;   /* white cards */
+  --card-2:  #FBF7F0;   /* subtle inset panels */
+  --text:    #0E0E10;   /* charcoal text */
+  --muted:   #6E6A63;   /* secondary text */
+  --accent:  #F5B301;   /* amber-gold: primary chart colour + active buttons */
+  --accent-2:#E2582B;   /* rust: secondary chart colour */
+  --border:  #E7DCCB;
+  --grid:    rgba(14,14,16,.08);
+  --shadow:  0 1px 2px rgba(14,14,16,.04), 0 8px 24px rgba(14,14,16,.06);
+  --shadow-h:0 2px 6px rgba(14,14,16,.06), 0 16px 40px rgba(14,14,16,.10);
+  --radius:  12px;
+  --ok:      #2E8B57;
+  --warn:    #E2582B;
+}
+body.dark{
+  --bg:      #131315;
+  --card:    #1C1C20;
+  --card-2:  #232328;
+  --text:    #F4EDE2;
+  --muted:   #9C968C;
+  --border:  #2E2E35;
+  --grid:    rgba(244,237,226,.10);
+  --shadow:  0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  --shadow-h:0 2px 6px rgba(0,0,0,.5), 0 16px 40px rgba(0,0,0,.45);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px; line-height:1.5;
+  transition:background .25s ease, color .25s ease;
+}
+h1,h2,h3,h4,.font-display{font-family:Poppins,-apple-system,sans-serif;font-weight:600;letter-spacing:-.01em;margin:0}
+button,select,input,textarea{font:inherit;color:inherit}
+::selection{background:var(--accent);color:#0E0E10}
+
+/* ---------- top bar ---------- */
+.topbar{
+  position:sticky; top:0; z-index:40;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:14px 24px;
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);
+}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .mark{
+  width:30px;height:30px;border-radius:9px;background:var(--accent);
+  display:grid;place-items:center;color:#0E0E10;flex:0 0 auto;
+}
+.brand h1{font-size:18px}
+.brand .sub{color:var(--muted);font-size:12px;padding-left:8px;border-left:1px solid var(--border)}
+.spacer{flex:1}
+.privacy{
+  font-size:12px;color:var(--muted);background:var(--card);
+  border:1px solid var(--border);border-radius:999px;padding:6px 12px;white-space:nowrap;
+}
+.icon-btn{
+  width:36px;height:36px;border-radius:10px;border:1px solid var(--border);
+  background:var(--card);cursor:pointer;display:grid;place-items:center;font-size:15px;
+  transition:transform .15s ease, box-shadow .15s ease;
+}
+.icon-btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+
+/* ---------- buttons ---------- */
+.btn{
+  border:1px solid var(--border); background:var(--card); color:var(--text);
+  padding:8px 14px; border-radius:10px; cursor:pointer; font-size:13px; font-weight:500;
+  transition:transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow);border-color:var(--accent)}
+.btn:active{transform:translateY(0)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#0E0E10;font-weight:600}
+.btn.primary:hover{box-shadow:0 6px 18px rgba(245,179,1,.35)}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.btn:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible,.icon-btn:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+select,input[type=text],input[type=number],input[type=date],input[type=search]{
+  background:var(--card);border:1px solid var(--border);border-radius:9px;padding:7px 10px;font-size:13px;
+}
+
+/* ---------- layout ---------- */
+main{max-width:1360px;margin:0 auto;padding:24px}
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:var(--shadow); transition:box-shadow .2s ease, transform .2s ease;
+}
+.section{margin-top:22px}
+.section-head{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.section-head h2{font-size:16px}
+.section-head .hint{color:var(--muted);font-size:12px}
+
+/* ---------- empty state ---------- */
+#emptyState{display:grid;place-items:center;padding:40px 0 60px}
+.drop{
+  width:100%;max-width:640px;text-align:center;padding:48px 32px;
+  border:2px dashed var(--border);border-radius:20px;background:var(--card);
+  transition:border-color .2s ease, background .2s ease, transform .2s ease;
+}
+.drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--card));transform:scale(1.01)}
+.drop h2{font-size:22px;margin-bottom:6px}
+.drop p{color:var(--muted);margin:0 0 20px}
+.drop .formats{font-size:12px;color:var(--muted);margin-top:16px}
+
+/* ---------- toolbar ---------- */
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px}
+.toolbar .file-name{font-weight:600;display:flex;align-items:center;gap:8px}
+.toolbar .meta{color:var(--muted);font-size:12px}
+.field{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+
+/* ---------- KPI cards ---------- */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.kpi{
+  background:var(--card);border:1px solid var(--border);border-top:3px solid var(--accent);
+  border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);
+  transition:transform .2s ease, box-shadow .2s ease;
+}
+.kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-h)}
+.kpi .val{font-family:Poppins,sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.15;word-break:break-word}
+.kpi .lbl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+.kpi .sub{font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.kpi.alt{border-top-color:var(--accent-2)}
+
+/* ---------- filter bar ---------- */
+.filters{display:flex;gap:10px;flex-wrap:wrap;padding:12px 14px;align-items:center}
+.filter{position:relative}
+.filter > button{
+  border:1px solid var(--border);background:var(--card-2);border-radius:9px;padding:7px 12px;
+  cursor:pointer;font-size:12.5px;display:flex;gap:8px;align-items:center;
+}
+.filter > button.active{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--card))}
+.filter .caret{color:var(--muted);font-size:10px}
+.filter-pop{
+  position:absolute;top:calc(100% + 6px);left:0;z-index:60;width:250px;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:var(--shadow-h);padding:10px;display:none;
+}
+.filter-pop.open{display:block}
+.filter-pop .opts{max-height:220px;overflow:auto;margin-top:8px}
+.filter-pop label{display:flex;gap:8px;align-items:center;padding:5px 4px;border-radius:6px;cursor:pointer;font-size:13px}
+.filter-pop label:hover{background:var(--card-2)}
+.filter-pop .row{display:flex;gap:6px;margin-top:8px}
+.filter-pop input[type=search],.filter-pop input[type=date]{width:100%}
+.pop-count{color:var(--muted);font-size:11px}
+
+/* ---------- charts ---------- */
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:900px){ .charts{grid-template-columns:1fr} }
+.chart-card{padding:14px 16px 16px;display:flex;flex-direction:column;min-height:340px}
+.chart-card:hover{box-shadow:var(--shadow-h)}
+.chart-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px}
+.chart-head h3{font-size:14.5px;line-height:1.35;flex:1}
+.chart-tools{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chart-tools select{font-size:11.5px;padding:4px 6px;border-radius:7px;max-width:150px}
+.chart-body{position:relative;flex:1;min-height:250px}
+.chart-note{font-size:11.5px;color:var(--muted);margin-top:8px}
+.chart-card.wide{grid-column:1 / -1}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow:auto;max-height:520px;border-top:1px solid var(--border)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+thead th{
+  position:sticky;top:0;background:var(--card-2);z-index:1;cursor:pointer;
+  font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+}
+thead th:hover{color:var(--text)}
+tbody tr:hover{background:var(--card-2)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.pager{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:12.5px;color:var(--muted)}
+.pivot-tbl td.num{font-variant-numeric:tabular-nums}
+.pivot-tbl tr.total td, .pivot-tbl td.total{font-weight:700;background:var(--card-2)}
+
+/* ---------- profile / quality ---------- */
+details.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+details.panel > summary{
+  cursor:pointer;padding:14px 16px;font-family:Poppins,sans-serif;font-weight:600;font-size:14px;
+  display:flex;align-items:center;gap:10px;list-style:none;
+}
+details.panel > summary::-webkit-details-marker{display:none}
+details.panel > summary::before{content:"▸";color:var(--accent);font-size:12px;transition:transform .2s ease}
+details.panel[open] > summary::before{transform:rotate(90deg)}
+.panel-body{padding:0 16px 16px}
+.badge{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:var(--card-2);color:var(--muted);white-space:nowrap}
+.badge.measure{background:color-mix(in srgb,var(--accent) 22%,transparent);border-color:transparent;color:var(--text)}
+.badge.dimension{background:color-mix(in srgb,var(--accent-2) 20%,transparent);border-color:transparent;color:var(--text)}
+.badge.time{background:rgba(46,134,171,.22);border-color:transparent;color:var(--text)}
+.badge.identifier{background:transparent}
+.badge.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);border-color:transparent;color:var(--text)}
+.quality-list{display:grid;gap:8px}
+.q-item{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:var(--card-2);border-radius:10px;font-size:13px}
+.q-item .ico{flex:0 0 auto}
+
+/* ---------- misc ---------- */
+#loader{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(4px);display:none;place-items:center;z-index:200}
+#loader.on{display:grid}
+.spinner{width:42px;height:42px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:spin .8s linear infinite;margin:0 auto 14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loaderText{font-family:Poppins,sans-serif;font-weight:500;text-align:center}
+#loaderSub{color:var(--muted);font-size:12.5px;text-align:center;margin-top:4px}
+.modal-back{position:fixed;inset:0;background:rgba(14,14,16,.45);display:none;place-items:center;z-index:150;padding:20px}
+.modal-back.on{display:grid}
+.modal{background:var(--card);border-radius:16px;box-shadow:var(--shadow-h);width:100%;max-width:460px;padding:20px;border:1px solid var(--border)}
+.modal h3{font-size:16px;margin-bottom:14px}
+.modal .frow{display:grid;gap:5px;margin-bottom:12px}
+.modal .frow label{font-size:12px;color:var(--muted)}
+.modal .frow select{width:100%}
+#toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,20px);background:var(--text);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:.25s ease;z-index:300}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+.alert{padding:12px 14px;border-radius:10px;background:color-mix(in srgb,var(--warn) 12%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);font-size:13px;margin-bottom:14px}
+.insight-box{white-space:pre-wrap;font-size:13px;line-height:1.7;padding:14px 16px;background:var(--card-2);border-radius:10px;margin:0}
+.pivot-controls{display:flex;gap:10px;flex-wrap:wrap;padding:12px 14px;align-items:end}
+.pivot-controls .frow{display:grid;gap:4px}
+.pivot-controls label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+@media (prefers-reduced-motion: reduce){ *{animation-duration:.01ms !important;transition-duration:.01ms !important} }
+
+/* ---------- print / save as PDF ---------- */
+@media print{
+  @page{margin:12mm}
+  body{background:#fff;color:#000}
+  .topbar,.toolbar,.filters,#addChartBtn,.chart-tools,.pager,.no-print,.icon-btn,details.panel > summary::before{display:none !important}
+  main{max-width:none;padding:0}
+  .card,.kpi{box-shadow:none;border:1px solid #ddd;break-inside:avoid}
+  .charts{grid-template-columns:repeat(2,1fr)}
+  .chart-card{min-height:0;break-inside:avoid}
+  .tbl-wrap{max-height:none}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="mark" aria-hidden="true">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="7" width="3.4" height="8" rx="1" fill="currentColor"/><rect x="6.3" y="3" width="3.4" height="12" rx="1" fill="currentColor"/><rect x="11.6" y="9" width="3.4" height="6" rx="1" fill="currentColor"/></svg>
+    </div>
+    <h1 id="appName">InstantDash</h1>
+    <span class="sub">Excel to Dashboard</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="privacy">🔒 Your data never leaves your computer.</span>
+  <button class="icon-btn no-print" id="themeToggle" title="Switch theme" aria-label="Switch theme">🌙</button>
+</header>
+
+<main>
+
+  <!-- ============ EMPTY STATE ============ -->
+  <section id="emptyState">
+    <div class="drop" id="dropZone">
+      <svg width="128" height="104" viewBox="0 0 128 104" fill="none" aria-hidden="true">
+        <rect x="10" y="14" width="76" height="76" rx="8" fill="var(--card-2)" stroke="var(--border)" stroke-width="2"/>
+        <path d="M10 30h76" stroke="var(--border)" stroke-width="2"/>
+        <path d="M34 30v60M60 30v60" stroke="var(--border)" stroke-width="2"/>
+        <rect x="62" y="40" width="56" height="50" rx="8" fill="var(--card)" stroke="var(--text)" stroke-width="2"/>
+        <rect x="70" y="66" width="9" height="16" rx="2" fill="var(--accent)"/>
+        <rect x="85" y="56" width="9" height="26" rx="2" fill="var(--accent-2)"/>
+        <rect x="100" y="62" width="9" height="20" rx="2" fill="var(--accent)"/>
+        <path d="M70 52l14-8 12 6 14-12" stroke="var(--text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".35"/>
+        <circle cx="96" cy="32" r="7" fill="var(--accent)"/>
+        <path d="M93 32l2.2 2.4 4-4.6" stroke="#0E0E10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h2>Drop a spreadsheet to build a dashboard</h2>
+      <p>Any columns, any structure. InstantDash reads the file, works out what each column is, and charts it.</p>
+      <button class="btn primary" id="browseBtn">Choose a file</button>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden />
+      <div class="formats">.xlsx · .xls · .csv &nbsp;·&nbsp; up to ~100,000 rows &nbsp;·&nbsp; nothing is uploaded anywhere</div>
+    </div>
+  </section>
+
+  <!-- ============ APP ============ -->
+  <section id="app" hidden>
+
+    <div class="card toolbar no-print">
+      <span class="file-name">📄 <span id="fileName">—</span></span>
+      <span class="meta" id="fileMeta"></span>
+      <div class="spacer"></div>
+      <label class="field">Sheet
+        <select id="sheetSelect"></select>
+      </label>
+      <label class="field">Header is on row
+        <input type="number" id="headerRow" min="1" value="1" style="width:64px" />
+      </label>
+      <button class="btn sm" id="resetFiltersBtn">Reset filters</button>
+      <button class="btn sm" id="newFileBtn">Load another file</button>
+    </div>
+
+    <div id="alerts" class="section"></div>
+
+    <div class="section" id="kpiSection">
+      <div class="kpi-grid" id="kpiRow"></div>
+    </div>
+
+    <div class="section no-print">
+      <div class="card filters" id="filterBar"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>Dashboard</h2>
+        <span class="hint" id="chartHint"></span>
+        <div class="spacer"></div>
+        <button class="btn sm no-print" id="addChartBtn">+ Add chart</button>
+      </div>
+      <div class="charts" id="chartsGrid"></div>
+    </div>
+
+    <div class="section">
+      <details class="panel" id="profilePanel">
+        <summary>Data profile <span class="badge" id="profileCount"></span></summary>
+        <div class="panel-body">
+          <p class="hint" style="color:var(--muted);font-size:12.5px;margin:0 0 10px">
+            This is what InstantDash worked out about each column. Change the type if it got one wrong — charts rebuild instantly.
+          </p>
+          <div class="tbl-wrap" style="max-height:420px;border-radius:10px">
+            <table id="profileTable"></table>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="section">
+      <details class="panel" id="qualityPanel">
+        <summary>Data quality <span class="badge" id="qualityCount"></span></summary>
+        <div class="panel-body"><div class="quality-list" id="qualityList"></div></div>
+      </details>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Pivot table</h2><span class="hint">Cross-tab any two columns.</span></div>
+      <div class="card">
+        <div class="pivot-controls no-print">
+          <div class="frow"><label>Rows</label><select id="pvRows"></select></div>
+          <div class="frow"><label>Columns</label><select id="pvCols"></select></div>
+          <div class="frow"><label>Values</label><select id="pvVals"></select></div>
+          <div class="frow"><label>Aggregation</label><select id="pvAgg"></select></div>
+          <button class="btn sm primary" id="pvBuild">Build pivot</button>
+        </div>
+        <div class="tbl-wrap"><table class="pivot-tbl" id="pivotTable"></table></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>Raw data</h2><span class="hint" id="tableHint"></span>
+        <div class="spacer"></div>
+        <input type="search" id="tableSearch" placeholder="Search rows…" class="no-print" style="width:200px" />
+        <button class="btn sm no-print" id="exportCsvBtn">Export CSV</button>
+      </div>
+      <div class="card">
+        <div class="tbl-wrap"><table id="dataTable"></table></div>
+        <div class="pager no-print">
+          <button class="btn sm" id="prevPage">← Prev</button>
+          <span id="pageInfo"></span>
+          <button class="btn sm" id="nextPage">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>Summary</h2>
+        <div class="spacer"></div>
+        <button class="btn sm no-print" id="copyInsightsBtn">Copy summary</button>
+        <button class="btn sm no-print" id="printBtn">Print / Save as PDF</button>
+      </div>
+      <div class="card"><pre class="insight-box" id="insightBox"></pre></div>
+    </div>
+
+  </section>
+</main>
+
+<div id="loader"><div><div class="spinner"></div><div id="loaderText">Reading your file…</div><div id="loaderSub"></div></div></div>
+
+<div class="modal-back" id="chartModal">
+  <div class="modal">
+    <h3>Add a chart</h3>
+    <div class="frow"><label>Chart type</label><select id="ncType"></select></div>
+    <div class="frow"><label>Group by (X axis)</label><select id="ncX"></select></div>
+    <div class="frow"><label>Value (Y axis)</label><select id="ncY"></select></div>
+    <div class="frow"><label>Aggregation</label><select id="ncAgg"></select></div>
+    <div class="frow"><label>Split by (optional)</label><select id="ncSeries"></select></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn" id="ncCancel">Cancel</button>
+      <button class="btn primary" id="ncAdd">Add chart</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   InstantDash — Excel to Dashboard
+   Everything runs in your browser. No server, no upload, no key.
+   ---------------------------------------------------------------------
+   The whole app is generic: it never assumes a column called "Sales" or
+   "Date" exists. Every decision is made at runtime from the file itself.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   CONFIG — the knobs worth turning. See "How to Customize" in the notes.
+   --------------------------------------------------------------------- */
+const CONFIG = {
+  APP_NAME: 'InstantDash',
+
+  // How many charts to auto-generate
+  MIN_CHARTS: 4,
+  MAX_CHARTS: 8,
+
+  // Cardinality thresholds that decide a text column's role
+  DIMENSION_MAX_UNIQUE: 15,   // <= this many unique values  → normal dimension
+  HIGH_CARD_MAX_UNIQUE: 50,   // 16..this                    → "Top 10 only" dimension
+  DONUT_MAX_UNIQUE: 6,        // 2..this                     → eligible for a donut
+  ID_UNIQUE_RATIO: 0.9,       // unique/rows above this      → treated as an identifier
+
+  TOP_N: 10,                  // bars kept before bundling the rest into "Others"
+  HISTOGRAM_BINS: 10,
+  SCATTER_MAX_POINTS: 3000,   // scatter plots are sampled above this
+  PAGE_SIZE: 50,              // rows per page in the raw data table
+  BIG_FILE_WARN: 200000,      // show a friendly warning above this many rows
+  OUTLIER_SIGMA: 3,           // flag values beyond N standard deviations
+  MISSING_WARN_PCT: 10,       // warning icon above this % of missing values
+  DATE_DAY_FIRST: true,       // ambiguous 03/04/2024 reads as 3 April (set false for US files)
+
+  // 8-colour palette for multi-series charts. First two are the brand colours.
+  PALETTE: ['#F5B301','#E2582B','#2E86AB','#3FB07A','#8E5BC9','#D9455F','#0E9AA7','#B0793E']
+};
+
+/* ---------------------------------------------------------------------
+   STATE — one object holding everything the app currently knows
+   --------------------------------------------------------------------- */
+const APP = {
+  fileName: '',
+  workbook: null,
+  sheetNames: [],
+  activeSheet: '',
+  aoa: [],            // raw sheet as an array of arrays
+  headerRow: 0,       // zero-based index of the detected header row
+  columns: [],        // profile objects, one per column
+  rows: [],           // parsed rows as {columnName: value}
+  filtered: [],       // rows after the filter bar is applied
+  filters: {},        // columnName → {kind:'cat'|'date', ...}
+  charts: [],         // live chart specs + Chart.js instances
+  chartSeq: 0,
+  sort: {col:null, dir:1},
+  page: 0,
+  search: '',
+  dark: false
+};
+
+/* ---------------------------------------------------------------------
+   Small helpers
+   --------------------------------------------------------------------- */
+const $  = (id) => document.getElementById(id);
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('on'), 2200); }
+function showLoader(text, sub){ $('loaderText').textContent = text || 'Working…'; $('loaderSub').textContent = sub || ''; $('loader').classList.add('on'); }
+function hideLoader(){ $('loader').classList.remove('on'); }
+function nextFrame(){ return new Promise(r => requestAnimationFrame(()=>requestAnimationFrame(r))); }
+
+// Number formatting with thousands separators; compacts very large values.
+function fmtNum(n){
+  if (n == null || !isFinite(n)) return '—';
+  const a = Math.abs(n);
+  if (a >= 1e9)  return (n/1e9).toFixed(2).replace(/\.00$/,'') + 'B';
+  if (a >= 1e6)  return (n/1e6).toFixed(2).replace(/\.00$/,'') + 'M';
+  if (a >= 1000) return Math.round(n).toLocaleString();
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return Number(n.toFixed(2)).toLocaleString();
+}
+function fmtFull(n){
+  if (n == null || !isFinite(n)) return '—';
+  return Number.isInteger(n) ? n.toLocaleString() : Number(n.toFixed(2)).toLocaleString();
+}
+function fmtDate(d){
+  if (!(d instanceof Date) || isNaN(d)) return '—';
+  return d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'2-digit'});
+}
+function pad(n){ return n < 10 ? '0'+n : ''+n; }
+function isBlank(v){ return v === null || v === undefined || (typeof v === 'string' && v.trim() === ''); }
+
+/* ---------------------------------------------------------------------
+   NUMBER CLEANING
+   Real spreadsheets store numbers as text: "₹1,25,000", "$1,200.50",
+   "45%", "(500)" for negative, "1 200,00". This turns all of those into
+   a plain JavaScript number, and returns null when it genuinely isn't one.
+   --------------------------------------------------------------------- */
+function cleanNumber(raw){
+  if (typeof raw === 'number') return isFinite(raw) ? raw : null;
+  if (typeof raw === 'boolean' || raw instanceof Date) return null;
+  if (raw == null) return null;
+
+  let s = String(raw).trim();
+  if (!s) return null;
+  if (s.length > 32) return null;              // long strings are never numbers we care about
+
+  let negative = false;
+
+  // Accounting style: (500) means -500
+  if (/^\(.*\)$/.test(s)) { negative = true; s = s.slice(1, -1).trim(); }
+
+  // Trailing (or leading) percent sign — we strip it and keep the face value,
+  // so 45% is charted as 45, not 0.45.
+  const isPct = /%\s*$/.test(s);
+  s = s.replace(/%\s*$/, '').replace(/^%/, '');
+
+  // Currency symbols, spaces, non-breaking spaces, apostrophe separators
+  s = s.replace(/[₹$€£¥₩₽¢]/g, '').replace(/[\s\u00A0']/g, '');
+
+  // Trailing minus ("500-") used by some export tools
+  if (/-$/.test(s)) { negative = true; s = s.slice(0, -1); }
+  if (/^-/.test(s)) { negative = true; s = s.slice(1); }
+  if (/^\+/.test(s)) s = s.slice(1);
+
+  // Comma handling. Works for both 1,234,567.89 and the Indian 1,25,000.
+  // If commas are used as the decimal mark (European "1.234,56") flip them.
+  if (s.includes(',') && s.includes('.')) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g,'').replace(',', '.');
+    else s = s.replace(/,/g, '');
+  } else if (s.includes(',')) {
+    const parts = s.split(',');
+    const last = parts[parts.length - 1];
+    // "1234,56" → decimal comma. "1,25,000" / "1,234" → thousands separator.
+    if (parts.length === 2 && last.length !== 3) s = s.replace(',', '.');
+    else s = s.replace(/,/g, '');
+  }
+
+  if (!/^\d*\.?\d+(e[+-]?\d+)?$/i.test(s)) return null;
+  let n = parseFloat(s);
+  if (!isFinite(n)) return null;
+  if (negative) n = -n;
+  return isPct ? n : n;   // percents keep their face value: "45%" becomes 45
+}
+
+/* ---------------------------------------------------------------------
+   DATE PARSING
+   SheetJS is asked to read with cellDates:true, so real Excel dates
+   arrive as JavaScript Date objects and serial numbers like 45321 are
+   already converted. This handles the remaining case: dates typed as text.
+   --------------------------------------------------------------------- */
+const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,sept:8,oct:9,nov:10,dec:11};
+
+function parseDateStr(raw, dayFirst){
+  if (raw instanceof Date) return isNaN(raw) ? null : raw;
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (s.length < 6 || s.length > 40) return null;
+  if (!/\d/.test(s)) return null;
+
+  let m;
+  // ISO: 2024-03-15  (optionally with a time)
+  if ((m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[T ](\d{1,2}):(\d{2}))?/))){
+    return mk(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0));
+  }
+  // 15/03/2024 or 03-15-2024 or 15.03.2024
+  if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})(?:[T ](\d{1,2}):(\d{2}))?$/))){
+    let a = +m[1], b = +m[2], y = +m[3];
+    if (y < 100) y += y < 50 ? 2000 : 1900;
+    let d, mo;
+    if (a > 12) { d = a; mo = b; }
+    else if (b > 12) { d = b; mo = a; }
+    else if (dayFirst) { d = a; mo = b; }
+    else { d = b; mo = a; }
+    return mk(y, mo-1, d, +(m[4]||0), +(m[5]||0));
+  }
+  // 15 Mar 2024 / 15-Mar-24
+  if ((m = s.match(/^(\d{1,2})[-\s]([A-Za-z]{3,9})[-\s,]+(\d{2,4})$/))){
+    const mo = MONTHS[m[2].slice(0,4).toLowerCase()] ?? MONTHS[m[2].slice(0,3).toLowerCase()];
+    if (mo === undefined) return null;
+    let y = +m[3]; if (y < 100) y += y < 50 ? 2000 : 1900;
+    return mk(y, mo, +m[1]);
+  }
+  // Mar 15, 2024
+  if ((m = s.match(/^([A-Za-z]{3,9})[-\s]+(\d{1,2})[-\s,]+(\d{2,4})$/))){
+    const mo = MONTHS[m[1].slice(0,4).toLowerCase()] ?? MONTHS[m[1].slice(0,3).toLowerCase()];
+    if (mo === undefined) return null;
+    let y = +m[3]; if (y < 100) y += y < 50 ? 2000 : 1900;
+    return mk(y, mo, +m[2]);
+  }
+  return null;
+
+  function mk(y, mo, d, h, mi){
+    if (y < 1900 || y > 2200 || mo < 0 || mo > 11 || d < 1 || d > 31) return null;
+    const dt = new Date(y, mo, d, h||0, mi||0);
+    return isNaN(dt) ? null : dt;
+  }
+}
+
+// Excel stores dates as days since 1899-12-30. Used only as a rescue when a
+// column is *named* like a date but arrived as bare numbers.
+function serialToDate(n){
+  if (typeof n !== 'number' || n < 20000 || n > 60000) return null;
+  const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+  return isNaN(d) ? null : new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/* ---------------------------------------------------------------------
+   FILE INGEST
+   --------------------------------------------------------------------- */
+function wireIngest(){
+  const dz = $('dropZone'), input = $('fileInput');
+  $('browseBtn').onclick = () => input.click();
+  input.onchange = e => { if (e.target.files[0]) handleFile(e.target.files[0]); input.value = ''; };
+
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('over'); }));
+  dz.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) handleFile(f); });
+
+  // Dropping anywhere on the page works too, once a file is loaded
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    if (!$('app').hidden && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  $('newFileBtn').onclick = () => input.click();
+}
+
+async function handleFile(file){
+  const name = file.name || 'workbook';
+  if (!/\.(xlsx|xlsm|xls|csv|txt)$/i.test(name)){
+    return showFatal('That file type isn’t supported. Choose an .xlsx, .xls or .csv file.');
+  }
+  showLoader('Reading ' + name, 'Nothing is being uploaded — this is happening on your machine.');
+  await nextFrame();
+
+  try {
+    const buf = await file.arrayBuffer();
+    let wb;
+    try {
+      // cellDates:true is the important bit — it turns Excel date serials
+      // into real Date objects instead of numbers like 45321.
+      wb = XLSX.read(new Uint8Array(buf), {type:'array', cellDates:true, cellNF:false, cellText:false});
+    } catch (err) {
+      hideLoader();
+      const msg = /password|encrypt/i.test(err && err.message || '')
+        ? 'That workbook is password-protected. Remove the password in Excel and try again.'
+        : 'That file couldn’t be read — it may be corrupt or saved in an unusual format. Try re-saving it as .xlsx or .csv.';
+      return showFatal(msg);
+    }
+
+    if (!wb || !wb.SheetNames || !wb.SheetNames.length){
+      hideLoader(); return showFatal('That workbook has no sheets in it.');
+    }
+
+    APP.workbook = wb;
+    APP.fileName = name;
+    APP.sheetNames = wb.SheetNames.slice();
+
+    // Pick the first sheet that actually contains something
+    let pick = wb.SheetNames.find(n => sheetHasData(wb.Sheets[n])) || wb.SheetNames[0];
+    buildSheetSelector(pick);
+    await loadSheet(pick, true);
+  } catch (err){
+    console.error(err);
+    hideLoader();
+    showFatal('Something went wrong reading that file: ' + (err && err.message ? err.message : 'unknown error'));
+  }
+}
+
+function sheetHasData(ws){
+  if (!ws || !ws['!ref']) return false;
+  const r = XLSX.utils.decode_range(ws['!ref']);
+  return (r.e.r - r.s.r) >= 1 && (r.e.c - r.s.c) >= 0;
+}
+
+function buildSheetSelector(active){
+  const sel = $('sheetSelect');
+  sel.innerHTML = APP.sheetNames.map(n => `<option ${n===active?'selected':''}>${esc(n)}</option>`).join('');
+  sel.parentElement.style.display = APP.sheetNames.length > 1 ? '' : 'none';
+  sel.onchange = () => loadSheet(sel.value, true);
+}
+
+/* Reads one sheet into APP.aoa, detects the header row, then builds rows. */
+async function loadSheet(sheetName, autoHeader){
+  showLoader('Reading sheet “' + sheetName + '”…');
+  await nextFrame();
+  try {
+    const ws = APP.workbook.Sheets[sheetName];
+    APP.activeSheet = sheetName;
+
+    if (!ws || !ws['!ref']){ hideLoader(); return showFatal('The sheet “' + sheetName + '” is empty.'); }
+
+    // Merged cells: copy the top-left value across the whole merged range so
+    // merged headers don't come through as blanks. Guarded so a giant merge
+    // can't hang the browser.
+    try {
+      (ws['!merges'] || []).forEach(m => {
+        const cells = (m.e.r - m.s.r + 1) * (m.e.c - m.s.c + 1);
+        if (cells > 2000) return;
+        const src = ws[XLSX.utils.encode_cell({r:m.s.r, c:m.s.c})];
+        if (!src) return;
+        for (let r = m.s.r; r <= m.e.r; r++)
+          for (let c = m.s.c; c <= m.e.c; c++){
+            const addr = XLSX.utils.encode_cell({r, c});
+            if (!ws[addr]) ws[addr] = Object.assign({}, src);
+          }
+      });
+    } catch(_){ /* merged-cell weirdness must never break the load */ }
+
+    // Blank rows are KEPT here on purpose, so index 0 really is sheet row 1.
+    // That way the "Header is on row ___" box matches what the user sees in
+    // Excel. Blank rows are skipped later, when the data rows are built.
+    let aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null, blankrows:true});
+    while (aoa.length && !(aoa[aoa.length-1] || []).some(c => !isBlank(c))) aoa.pop();  // trim the blank tail
+
+    if (!aoa.length || !aoa.some(r => (r||[]).some(c => !isBlank(c)))){
+      hideLoader(); return showFatal('The sheet “' + sheetName + '” has no data in it.');
+    }
+
+    APP.aoa = aoa;
+    if (autoHeader){
+      APP.headerRow = detectHeaderRow(aoa);
+      $('headerRow').value = APP.headerRow + 1;
+    }
+    await rebuildFromAoa();
+  } catch (err){
+    console.error(err);
+    hideLoader();
+    showFatal('That sheet couldn’t be read: ' + (err && err.message ? err.message : 'unknown error'));
+  }
+}
+
+/* ---------------------------------------------------------------------
+   HEADER DETECTION
+   The header is often not row 1 — files start with titles, logos, blank
+   rows. We score the first 10 rows on four signals and take the winner:
+     1. how full the row is
+     2. how text-like it is (headers are words, data is often numbers)
+     3. how unique its cells are (headers rarely repeat)
+     4. how different the rows below it look (data under a header changes type)
+   --------------------------------------------------------------------- */
+function detectHeaderRow(aoa){
+  const width = Math.max(...aoa.slice(0, 20).map(r => (r||[]).length), 1);
+  let best = 0, bestScore = -Infinity, examined = 0;
+
+  // Look at the first 10 rows that actually contain something, so a file
+  // padded with blank rows at the top is still handled.
+  for (let i = 0; i < aoa.length && examined < 10; i++){
+    const row = aoa[i] || [];
+    const cells = row.filter(c => !isBlank(c));
+    if (cells.length < 2) { if (cells.length) examined++; continue; }
+    const i0 = examined++;   // "how far down are we" measured in non-blank rows
+
+    const fill = cells.length / width;
+    const textish = cells.filter(c => typeof c === 'string' && cleanNumber(c) === null && !(c instanceof Date)).length / cells.length;
+    const uniq = new Set(cells.map(c => String(c).trim().toLowerCase())).size / cells.length;
+
+    // Compare against up to 5 rows underneath: good headers sit above data
+    // that is consistently filled and typed differently from the header.
+    let below = 0, checked = 0;
+    for (let j = i + 1; j < aoa.length && checked < 5; j++){
+      const r2 = aoa[j] || [];
+      if (!r2.some(c => !isBlank(c))) continue;      // ignore blank spacer rows
+      const f2 = r2.filter(c => !isBlank(c)).length / width;
+      const numish = r2.filter(c => typeof c === 'number' || c instanceof Date || (typeof c === 'string' && cleanNumber(c) !== null)).length / Math.max(cells.length, 1);
+      below += f2 * 0.6 + numish * 0.4;
+      checked++;
+    }
+    below = checked ? below / checked : 0;
+
+    // Rows nearer the top win ties — headers sit above their data, not below it.
+    const score = fill * 2 + textish * 2.2 + uniq * 1.2 + below * 2 - i0 * 0.12;
+    if (score > bestScore){ bestScore = score; best = i; }
+  }
+  if (bestScore === -Infinity) best = aoa.findIndex(r => (r||[]).some(c => !isBlank(c)));
+  return Math.max(best, 0);
+}
+
+/* Turns APP.aoa + APP.headerRow into APP.rows (array of plain objects). */
+async function rebuildFromAoa(){
+  const aoa = APP.aoa, h = Math.min(APP.headerRow, aoa.length - 1);
+  const headerCells = aoa[h] || [];
+  const dataRows = aoa.slice(h + 1);
+  const width = Math.max(headerCells.length, ...dataRows.slice(0, 200).map(r => r.length), 1);
+
+  // Work out which columns have any content at all, and name them.
+  const keep = [], names = [];
+  for (let c = 0; c < width; c++){
+    let has = !isBlank(headerCells[c]);
+    if (!has) for (let i = 0; i < Math.min(dataRows.length, 300); i++){ if (!isBlank(dataRows[i][c])) { has = true; break; } }
+    if (!has) continue;                                    // fully blank column → drop
+    let nm = isBlank(headerCells[c]) ? 'Column ' + (c + 1) : String(headerCells[c]).trim().replace(/\s+/g,' ');
+    if (names.includes(nm)) nm = nm + ' (' + (c + 1) + ')';  // de-duplicate repeated headers
+    keep.push(c); names.push(nm);
+  }
+
+  if (!names.length){ hideLoader(); return showFatal('No usable columns were found in this sheet.'); }
+
+  if (dataRows.length > CONFIG.BIG_FILE_WARN){
+    toast('That’s ' + dataRows.length.toLocaleString() + ' rows — things may feel slow.');
+  }
+
+  // Remember where each parsed row and column came from in the original sheet.
+  // If the user later overrides a column's type we re-read the *raw* cells,
+  // not the already-converted values.
+  APP.colSrc = {};
+  names.forEach((nm, k) => APP.colSrc[nm] = keep[k]);
+  const srcIndex = [];
+
+  // Build rows in chunks so the spinner can update on very large files.
+  const rows = [];
+  const CHUNK = 20000;
+  for (let start = 0; start < dataRows.length; start += CHUNK){
+    const end = Math.min(start + CHUNK, dataRows.length);
+    for (let i = start; i < end; i++){
+      const src = dataRows[i], o = {};
+      let any = false;
+      for (let k = 0; k < keep.length; k++){
+        const v = src[keep[k]];
+        o[names[k]] = isBlank(v) ? null : v;
+        if (!isBlank(v)) any = true;
+      }
+      if (any){ rows.push(o); srcIndex.push(h + 1 + i); }
+    }
+    if (dataRows.length > CHUNK){
+      showLoader('Reading rows…', end.toLocaleString() + ' of ' + dataRows.length.toLocaleString() + ' rows');
+      await nextFrame();
+    }
+  }
+
+  if (!rows.length){
+    hideLoader();
+    return showFatal('That sheet has a header row but no data underneath it. If the header isn’t really on row ' + (h + 1) + ', change the “Header is on row” box.');
+  }
+
+  APP.rows = rows;
+  APP.srcIndex = srcIndex;
+  APP.rawColumnNames = names;
+
+  showLoader('Working out what each column is…');
+  await nextFrame();
+  profileColumns(names);       // fills APP.columns
+  coerceValues();              // converts text numbers/dates in place
+  buildEverything();
+  hideLoader();
+}
+
+function showFatal(msg){
+  $('emptyState').hidden = false;
+  $('app').hidden = true;
+  const dz = $('dropZone');
+  let box = dz.querySelector('.alert');
+  if (!box){ box = el('div','alert'); dz.insertBefore(box, dz.firstChild); }
+  box.textContent = msg;
+  toast('Couldn’t open that file');
+}
+
+
+/* =====================================================================
+   STEP 2 — AUTO-PROFILE EVERY COLUMN
+   For each column we sample the values, decide the data type, compute
+   statistics, then assign a *role* that the chart engine can act on.
+   ===================================================================== */
+
+// Column names that almost always mean "this is an identifier, not a measure"
+const ID_NAME_RE = /(^|[\s_\-.])(id|ids|uid|guid|uuid|code|codes|no|nos|num|number|invoice|inv|ref|reference|sku|serial|barcode|phone|mobile|contact|email|mail|account|acct|pan|gst|aadhaar|zip|pincode|postcode|key|hash|url|link)([\s_\-.]|$)/i;
+const DATE_NAME_RE = /(date|dt|day|month|year|period|time|timestamp|created|updated|joined|dob|birth|due|start|end|from|to)/i;
+const BOOL_TRUE = new Set(['true','yes','y','1','t']);
+const BOOL_FALSE = new Set(['false','no','n','0','f']);
+
+function profileColumns(names){
+  const rows = APP.rows, n = rows.length;
+  // On huge files, type detection is done on a sample; stats still use every row.
+  const sampleSize = Math.min(n, 3000);
+  const step = Math.max(1, Math.floor(n / sampleSize));
+
+  APP.columns = names.map(name => {
+    const col = {
+      name,
+      type: 'text',      // number | date | text | boolean | identifier
+      role: 'other',     // measure | dimension | highdim | time | identifier | other
+      missing: 0, missingPct: 0,
+      unique: 0, uniqueRatio: 0,
+      top: [], mixed: false,
+      min:null, max:null, sum:null, mean:null, median:null, std:null,
+      dateMin:null, dateMax:null,
+      manual: false      // set to true when the user overrides the type
+    };
+
+    /* ---- pass 1: sample the values and vote on a type ---- */
+    let numHits = 0, dateHits = 0, boolHits = 0, seen = 0, textHits = 0;
+    let sawNativeNumber = false, sawTextNumber = false;
+    for (let i = 0; i < n; i += step){
+      const v = rows[i][name];
+      if (isBlank(v)) continue;
+      seen++;
+      if (v instanceof Date){ dateHits++; continue; }
+      if (typeof v === 'boolean'){ boolHits++; continue; }
+      if (typeof v === 'number'){ numHits++; sawNativeNumber = true; continue; }
+      const s = String(v).trim().toLowerCase();
+      if (BOOL_TRUE.has(s) || BOOL_FALSE.has(s)){ boolHits++; continue; }
+      if (parseDateStr(v, CONFIG.DATE_DAY_FIRST)){ dateHits++; continue; }
+      if (cleanNumber(v) !== null){ numHits++; sawTextNumber = true; continue; }
+      textHits++;
+    }
+    seen = Math.max(seen, 1);
+
+    // A column is a date/number/boolean if the strong majority of its
+    // non-empty values look that way. Otherwise it's text.
+    if (dateHits / seen >= 0.75) col.type = 'date';
+    else if (boolHits / seen >= 0.9 && numHits / seen < 0.9) col.type = 'boolean';
+    else if (numHits / seen >= 0.8) col.type = 'number';
+    else col.type = 'text';
+
+    // Rescue case: a column called "Order Date" holding bare Excel serials.
+    if (col.type === 'number' && DATE_NAME_RE.test(name)){
+      let serialish = 0, checked = 0;
+      for (let i = 0; i < n; i += step){
+        const v = rows[i][name]; if (isBlank(v)) continue;
+        checked++; if (serialToDate(typeof v === 'number' ? v : cleanNumber(v))) serialish++;
+      }
+      if (checked && serialish / checked > 0.9) { col.type = 'date'; col.fromSerial = true; }
+    }
+
+    // "Mixed type" flag for the data-quality panel: numbers stored as text.
+    col.mixed = (col.type === 'number' && sawTextNumber && sawNativeNumber) ||
+                (col.type === 'text' && numHits / seen > 0.25 && numHits / seen < 0.8);
+    col.numericRatio = numHits / seen;
+    return col;
+  });
+}
+
+/* Converts the values in APP.rows into their detected types, once, up front.
+   After this runs a "number" column holds real numbers and a "date" column
+   holds real Date objects — so every later step can stay simple and fast. */
+function coerceValues(){
+  const rows = APP.rows;
+  APP.columns.forEach(col => {
+    const name = col.name;
+    for (let i = 0; i < rows.length; i++){
+      const v = rows[i][name];
+      if (isBlank(v)) { rows[i][name] = null; continue; }
+      if (col.type === 'number'){
+        rows[i][name] = (typeof v === 'number') ? v : cleanNumber(v);
+      } else if (col.type === 'date'){
+        if (v instanceof Date) continue;
+        rows[i][name] = col.fromSerial
+          ? serialToDate(typeof v === 'number' ? v : cleanNumber(v))
+          : parseDateStr(v, CONFIG.DATE_DAY_FIRST);
+      } else if (col.type === 'boolean'){
+        if (typeof v === 'boolean') continue;
+        const s = String(v).trim().toLowerCase();
+        rows[i][name] = BOOL_TRUE.has(s) ? true : (BOOL_FALSE.has(s) ? false : String(v).trim());
+      } else {
+        rows[i][name] = (v instanceof Date) ? v : String(v).trim();
+      }
+    }
+    computeStats(col);
+  });
+  APP.columns.forEach(assignRole);
+}
+
+/* Full statistics for one column, using every row. */
+function computeStats(col){
+  const rows = APP.rows, name = col.name, n = rows.length;
+  let missing = 0;
+  const counts = new Map();
+  const nums = [];
+  let dMin = null, dMax = null;
+
+  for (let i = 0; i < n; i++){
+    const v = rows[i][name];
+    if (v === null || v === undefined || v === ''){ missing++; continue; }
+    if (col.type === 'number'){
+      if (typeof v === 'number' && isFinite(v)) nums.push(v); else missing++;
+      if (counts.size < 60000) counts.set(v, (counts.get(v)||0)+1);
+    } else if (col.type === 'date'){
+      if (v instanceof Date && !isNaN(v)){
+        if (!dMin || v < dMin) dMin = v;
+        if (!dMax || v > dMax) dMax = v;
+        const k = v.getFullYear()+'-'+pad(v.getMonth()+1)+'-'+pad(v.getDate());
+        if (counts.size < 60000) counts.set(k, (counts.get(k)||0)+1);
+      } else missing++;
+    } else {
+      const k = String(v);
+      if (counts.size < 60000) counts.set(k, (counts.get(k)||0)+1);
+    }
+  }
+
+  col.missing = missing;
+  col.missingPct = n ? (missing / n) * 100 : 0;
+  col.unique = counts.size;
+  col.uniqueRatio = n ? counts.size / Math.max(n - missing, 1) : 0;
+  col.top = [...counts.entries()].sort((a,b) => b[1]-a[1]).slice(0, 8).map(([value, count]) => ({value, count}));
+
+  if (col.type === 'number' && nums.length){
+    nums.sort((a,b) => a-b);
+    const sum = nums.reduce((a,b) => a+b, 0);
+    const mean = sum / nums.length;
+    const mid = Math.floor(nums.length/2);
+    col.min = nums[0];
+    col.max = nums[nums.length-1];
+    col.sum = sum;
+    col.mean = mean;
+    col.median = nums.length % 2 ? nums[mid] : (nums[mid-1]+nums[mid])/2;
+    col.std = Math.sqrt(nums.reduce((a,b) => a + (b-mean)*(b-mean), 0) / nums.length);
+    col.allInteger = nums.every(Number.isInteger);
+  }
+  if (col.type === 'date'){ col.dateMin = dMin; col.dateMax = dMax; }
+}
+
+/* ---------------------------------------------------------------------
+   ROLE CLASSIFICATION — the heart of the auto-dashboard.
+     time       : any date column
+     measure    : a number that isn't an identifier          → things to sum
+     dimension  : ≤15 unique text/boolean values             → things to group by
+     highdim    : 16–50 unique text values                   → Top 10 charts only
+     identifier : IDs, invoice numbers, emails, near-unique  → excluded from charts
+   --------------------------------------------------------------------- */
+function assignRole(col){
+  if (col.manual) return;                      // never overwrite a user's choice
+  const rows = APP.rows.length;
+  const nameLooksLikeId = ID_NAME_RE.test(col.name);
+
+  if (col.type === 'date'){ col.role = 'time'; return; }
+
+  if (col.type === 'number'){
+    // Numbers that are really identifiers. Being near-unique isn't enough on
+    // its own — a genuine "Amount" column is near-unique too. A numeric ID is
+    // also *dense*: 1001,1002,1003… packs its values into a tight range, while
+    // amounts scatter across a wide one. So we require both signals.
+    const dense = col.allInteger && col.min >= 0 && col.max != null &&
+                  (col.max - col.min + 1) <= Math.max(col.unique * 1.5, 2);
+    const nearUnique = rows > 20 && col.uniqueRatio >= CONFIG.ID_UNIQUE_RATIO && dense;
+    col.role = (nameLooksLikeId || nearUnique) ? 'identifier' : 'measure';
+    return;
+  }
+
+  if (col.type === 'boolean'){ col.role = 'dimension'; return; }
+
+  // Text
+  if (nameLooksLikeId && col.uniqueRatio > 0.5){ col.role = 'identifier'; return; }
+  if (rows > 20 && col.uniqueRatio >= CONFIG.ID_UNIQUE_RATIO){ col.role = 'identifier'; return; }
+  if (col.unique <= 1){ col.role = 'other'; return; }                          // constant column
+  if (col.unique <= CONFIG.DIMENSION_MAX_UNIQUE){ col.role = 'dimension'; return; }
+  if (col.unique <= CONFIG.HIGH_CARD_MAX_UNIQUE){ col.role = 'highdim'; return; }
+  col.role = 'identifier';
+}
+
+/* Convenience accessors used all over the chart engine. */
+const measures   = () => APP.columns.filter(c => c.role === 'measure');
+const dimensions = () => APP.columns.filter(c => c.role === 'dimension');
+const highDims   = () => APP.columns.filter(c => c.role === 'highdim');
+const timeCols   = () => APP.columns.filter(c => c.role === 'time');
+const groupables = () => APP.columns.filter(c => c.role === 'dimension' || c.role === 'highdim');
+const colByName  = (n) => APP.columns.find(c => c.name === n);
+
+// A rough "importance" score so the best columns are used first: prefer
+// columns with few missing values and a helpful spread of values.
+function rankMeasures(){
+  return measures().slice().sort((a,b) => score(b) - score(a));
+  function score(c){
+    let s = 100 - c.missingPct;
+    if (c.sum && Math.abs(c.sum) > 0) s += 10;
+    if (c.unique > 5) s += 8;                       // constant-ish measures are dull
+    if (/qty|quantity|count|units/i.test(c.name)) s += 4;
+    if (/amount|amt|value|revenue|sales|total|price|cost|salary|profit|spend/i.test(c.name)) s += 14;
+    return s;
+  }
+}
+function rankDimensions(){
+  return groupables().slice().sort((a,b) => score(b) - score(a));
+  function score(c){
+    let s = 100 - c.missingPct;
+    if (c.role === 'dimension') s += 25;
+    if (c.unique >= 2 && c.unique <= 8) s += 12;    // small, readable groupings first
+    if (/region|country|state|city|category|type|status|dept|department|team|segment|channel|product|gender|grade|priority/i.test(c.name)) s += 15;
+    return s;
+  }
+}
+
+/* =====================================================================
+   STEP 5 — DATA QUALITY PANEL
+   Surfaces the problems people usually don't know their file has.
+   ===================================================================== */
+function buildQualityPanel(){
+  const rows = APP.rows, list = $('qualityList');
+  const issues = [];
+
+  // 1. Missing values per column
+  APP.columns.filter(c => c.missing > 0)
+    .sort((a,b) => b.missingPct - a.missingPct)
+    .forEach(c => {
+      const warn = c.missingPct >= CONFIG.MISSING_WARN_PCT;
+      issues.push({
+        sev: warn ? 2 : 1,
+        ico: warn ? '⚠️' : 'ℹ️',
+        html: `<b>${esc(c.name)}</b> is missing ${c.missing.toLocaleString()} values (${c.missingPct.toFixed(1)}% of rows).`
+      });
+    });
+
+  // 2. Fully duplicate rows
+  const seen = new Set(); let dupes = 0;
+  const names = APP.columns.map(c => c.name);
+  for (let i = 0; i < rows.length; i++){
+    const key = names.map(nm => {
+      const v = rows[i][nm];
+      return v instanceof Date ? v.getTime() : (v === null ? '' : v);
+    }).join('\u0001');
+    if (seen.has(key)) dupes++; else seen.add(key);
+  }
+  if (dupes > 0) issues.push({sev:2, ico:'⚠️', html:`<b>${dupes.toLocaleString()} duplicate rows</b> — every value in these rows matches an earlier row.`});
+
+  // 3. Mixed types (numbers stored as text)
+  APP.columns.filter(c => c.mixed).forEach(c => {
+    issues.push({sev:2, ico:'🔀', html:`<b>${esc(c.name)}</b> mixes numbers and text. About ${(c.numericRatio*100).toFixed(0)}% of its values are numeric — the rest were left as text.`});
+  });
+
+  // 4. Outliers beyond N standard deviations
+  measures().forEach(c => {
+    if (!c.std || c.std === 0) return;
+    const lo = c.mean - CONFIG.OUTLIER_SIGMA * c.std, hi = c.mean + CONFIG.OUTLIER_SIGMA * c.std;
+    let out = 0, exampleHigh = null;
+    for (let i = 0; i < rows.length; i++){
+      const v = rows[i][c.name];
+      if (typeof v === 'number' && (v < lo || v > hi)){ out++; if (exampleHigh === null || Math.abs(v - c.mean) > Math.abs(exampleHigh - c.mean)) exampleHigh = v; }
+    }
+    if (out > 0) issues.push({sev:1, ico:'📈', html:`<b>${esc(c.name)}</b> has ${out.toLocaleString()} outliers beyond ${CONFIG.OUTLIER_SIGMA} standard deviations (most extreme: ${fmtFull(exampleHigh)}).`});
+  });
+
+  // 5. Constant columns
+  APP.columns.filter(c => c.unique === 1 && c.missing < rows.length).forEach(c => {
+    issues.push({sev:1, ico:'📎', html:`<b>${esc(c.name)}</b> has the same value in every row (${esc(String(c.top[0] ? c.top[0].value : ''))}) — it can't be charted.`});
+  });
+
+  issues.sort((a,b) => b.sev - a.sev);
+  list.innerHTML = issues.length
+    ? issues.map(i => `<div class="q-item"><span class="ico">${i.ico}</span><span>${i.html}</span></div>`).join('')
+    : `<div class="q-item"><span class="ico">✅</span><span>No missing values, duplicates, mixed types, outliers or constant columns found. This file is clean.</span></div>`;
+
+  const warnCount = issues.filter(i => i.sev === 2).length;
+  $('qualityCount').textContent = issues.length ? (issues.length + ' finding' + (issues.length>1?'s':'') + (warnCount ? ' · ' + warnCount + ' needs attention' : '')) : 'all clear';
+  $('qualityCount').className = 'badge' + (warnCount ? ' warn' : '');
+  APP.dupeRows = dupes;
+}
+
+/* Data profile table, with a per-column type override. */
+function buildProfilePanel(){
+  const t = $('profileTable');
+  const head = `<thead><tr>
+      <th>Column</th><th>Type</th><th>Role</th><th>Unique</th><th>Missing</th><th>Summary</th>
+    </tr></thead>`;
+  const body = APP.columns.map((c, i) => {
+    let summary = '';
+    if (c.type === 'number') summary = `min ${fmtNum(c.min)} · max ${fmtNum(c.max)} · sum ${fmtNum(c.sum)} · mean ${fmtNum(c.mean)} · median ${fmtNum(c.median)}`;
+    else if (c.type === 'date') summary = `${fmtDate(c.dateMin)} → ${fmtDate(c.dateMax)}`;
+    else summary = c.top.slice(0,3).map(t => `${esc(String(t.value))} (${t.count})`).join(' · ');
+
+    const roleLabel = {measure:'Measure', dimension:'Dimension', highdim:'Dimension (high cardinality)', time:'Time axis', identifier:'Identifier', other:'Not usable'}[c.role];
+    const roleCls = {measure:'measure', dimension:'dimension', highdim:'dimension', time:'time', identifier:'identifier', other:'identifier'}[c.role];
+
+    return `<tr>
+      <td><b>${esc(c.name)}</b></td>
+      <td><select data-typeidx="${i}" style="font-size:11.5px;padding:3px 6px">
+            ${['number','date','text','boolean'].map(t => `<option value="${t}" ${c.type===t?'selected':''}>${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}
+          </select></td>
+      <td><span class="badge ${roleCls}">${roleLabel}</span></td>
+      <td class="num">${c.unique.toLocaleString()}</td>
+      <td class="num">${c.missing.toLocaleString()} <span style="color:var(--muted)">(${c.missingPct.toFixed(1)}%)</span></td>
+      <td style="white-space:normal;color:var(--muted)">${summary}</td>
+    </tr>`;
+  }).join('');
+
+  t.innerHTML = head + '<tbody>' + body + '</tbody>';
+  $('profileCount').textContent = APP.columns.length + ' columns · ' + APP.rows.length.toLocaleString() + ' rows';
+
+  // Manual type override: re-coerce that one column and rebuild the dashboard.
+  t.querySelectorAll('select[data-typeidx]').forEach(sel => {
+    sel.onchange = () => {
+      const col = APP.columns[+sel.dataset.typeidx];
+      col.type = sel.value;
+      col.manual = false;          // let the role be recalculated for the new type
+      col.fromSerial = col.type === 'date';
+      recoerceColumn(col);
+      col.manual = true;           // then lock it so auto-detection won't undo it
+      buildEverything();
+      toast('“' + col.name + '” is now treated as ' + col.type);
+    };
+  });
+}
+
+/* Re-parse a single column after the user changes its type. */
+function recoerceColumn(col){
+  const rows = APP.rows, name = col.name;
+  const srcCol = APP.colSrc ? APP.colSrc[name] : undefined;
+  for (let i = 0; i < rows.length; i++){
+    // Go back to the untouched cell from the sheet where we can, so a value
+    // that failed to parse under the old type gets a fresh chance under the new one.
+    const srcRow = APP.srcIndex ? APP.aoa[APP.srcIndex[i]] : null;
+    const v = (srcRow && srcCol !== undefined) ? srcRow[srcCol] : rows[i][name];
+    if (isBlank(v)) { rows[i][name] = null; continue; }
+    if (col.type === 'number')      rows[i][name] = (typeof v === 'number') ? v : cleanNumber(v);
+    else if (col.type === 'date')   rows[i][name] = (v instanceof Date) ? v : (parseDateStr(String(v), CONFIG.DATE_DAY_FIRST) || serialToDate(typeof v === 'number' ? v : cleanNumber(v)));
+    else if (col.type === 'boolean'){ const s = String(v).trim().toLowerCase(); rows[i][name] = BOOL_TRUE.has(s) ? true : (BOOL_FALSE.has(s) ? false : String(v)); }
+    else rows[i][name] = (v instanceof Date) ? fmtDate(v) : String(v);
+  }
+  computeStats(col);
+  const keep = col.manual; col.manual = false; assignRole(col); col.manual = keep;
+}
+
+
+/* =====================================================================
+   AGGREGATION ENGINE
+   Every chart goes through here. Charts are always fed *aggregated*
+   numbers — never 100,000 raw points — which is what keeps big files fast.
+   ===================================================================== */
+
+const AGGS = {
+  sum:      {label:'Sum',            needsMeasure:true},
+  avg:      {label:'Average',        needsMeasure:true},
+  count:    {label:'Count of rows',  needsMeasure:false},
+  distinct: {label:'Distinct count', needsMeasure:true},
+  min:      {label:'Minimum',        needsMeasure:true},
+  max:      {label:'Maximum',        needsMeasure:true}
+};
+const AGG_TITLE = {sum:'Total', avg:'Average', count:'Count', distinct:'Unique', min:'Lowest', max:'Highest'};
+
+/* Chooses day / month / year buckets based on how much time the data spans. */
+function pickGranularity(col){
+  if (!col || !col.dateMin || !col.dateMax) return 'month';
+  const days = (col.dateMax - col.dateMin) / 86400000;
+  if (days <= 62) return 'day';
+  if (days <= 400) return 'month';
+  if (days <= 1500) return 'quarter';
+  return 'year';
+}
+
+/* Short month names, worked out once. Calling toLocaleString on every row
+   instead costs seconds on a large file — this is the difference between a
+   month-by-month chart drawing instantly and taking 13 seconds. */
+const MONTH_SHORT = (() => {
+  try { return Array.from({length:12}, (_, m) => new Date(2000, m, 1).toLocaleString(undefined, {month:'short'})); }
+  catch { return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; }
+})();
+
+/* Turns a value into the label it will be grouped under. */
+function bucketKey(v, col, gran){
+  if (v === null || v === undefined || v === '') return {k:'(blank)', s:Infinity};
+  if (col && col.type === 'date'){
+    if (!(v instanceof Date) || isNaN(v)) return {k:'(blank)', s:Infinity};
+    const y = v.getFullYear(), m = v.getMonth();
+    if (gran === 'day')     return {k:`${y}-${pad(m+1)}-${pad(v.getDate())}`, s:new Date(y,m,v.getDate()).getTime()};
+    if (gran === 'month')   return {k:`${MONTH_SHORT[m]} ${y}`, s:new Date(y,m,1).getTime()};
+    if (gran === 'quarter') return {k:`Q${Math.floor(m/3)+1} ${y}`, s:new Date(y,Math.floor(m/3)*3,1).getTime()};
+    return {k:String(y), s:new Date(y,0,1).getTime()};
+  }
+  if (typeof v === 'boolean') return {k: v ? 'Yes' : 'No', s:0};
+  return {k:String(v), s:0};
+}
+
+/* Core group-by. Returns {labels, series:[{label,data}], truncated}. */
+function aggregate(rows, spec){
+  const xCol = colByName(spec.x);
+  const gran = spec.granularity || (xCol && xCol.type === 'date' ? pickGranularity(xCol) : null);
+  const sCol = spec.series ? colByName(spec.series) : null;
+  const agg  = spec.agg || 'sum';
+  const yName = spec.y;
+
+  const labelInfo = new Map();          // label → sort key
+  const seriesMap = new Map();          // series label → Map(label → accumulator)
+
+  for (let i = 0; i < rows.length; i++){
+    const r = rows[i];
+    const {k, s} = bucketKey(r[spec.x], xCol, gran);
+    if (k === '(blank)' && xCol && xCol.type === 'date') continue;   // skip undated rows on a time axis
+    if (!labelInfo.has(k)) labelInfo.set(k, s);
+
+    const sk = sCol ? bucketKey(r[spec.series], sCol, null).k : '__all__';
+    let sm = seriesMap.get(sk);
+    if (!sm){ sm = new Map(); seriesMap.set(sk, sm); }
+    let acc = sm.get(k);
+    if (!acc){ acc = {sum:0, n:0, min:Infinity, max:-Infinity, set:null}; sm.set(k, acc); }
+
+    if (agg === 'count'){ acc.n++; continue; }
+    const v = r[yName];
+    if (agg === 'distinct'){
+      if (v === null || v === undefined || v === '') continue;
+      if (!acc.set) acc.set = new Set();
+      acc.set.add(v instanceof Date ? v.getTime() : v);
+      continue;
+    }
+    if (typeof v !== 'number' || !isFinite(v)) continue;
+    acc.sum += v; acc.n++;
+    if (v < acc.min) acc.min = v;
+    if (v > acc.max) acc.max = v;
+  }
+
+  const finish = (acc) => {
+    if (!acc) return null;
+    switch (agg){
+      case 'count':    return acc.n;
+      case 'distinct': return acc.set ? acc.set.size : 0;
+      case 'avg':      return acc.n ? acc.sum / acc.n : null;
+      case 'min':      return acc.min === Infinity ? null : acc.min;
+      case 'max':      return acc.max === -Infinity ? null : acc.max;
+      default:         return acc.sum;
+    }
+  };
+
+  // Order the labels: chronologically on a time axis, otherwise biggest first.
+  let labels = [...labelInfo.keys()];
+  const isTime = !!(xCol && xCol.type === 'date');
+  if (isTime){
+    labels.sort((a,b) => labelInfo.get(a) - labelInfo.get(b));
+  } else {
+    const total = new Map(labels.map(l => {
+      let t = 0;
+      seriesMap.forEach(sm => { const v = finish(sm.get(l)); if (typeof v === 'number') t += Math.abs(v); });
+      return [l, t];
+    }));
+    labels.sort((a,b) => total.get(b) - total.get(a));
+  }
+
+  // Top-N + "Others" so a 50-category column stays readable.
+  let truncated = 0;
+  const topN = spec.topN || 0;
+  if (!isTime && topN && labels.length > topN){
+    truncated = labels.length - topN;
+    const keep = labels.slice(0, topN), drop = new Set(labels.slice(topN));
+    seriesMap.forEach(sm => {
+      const other = {sum:0, n:0, min:Infinity, max:-Infinity, set:null};
+      drop.forEach(l => {
+        const a = sm.get(l); if (!a) return;
+        other.sum += a.sum; other.n += a.n;
+        other.min = Math.min(other.min, a.min); other.max = Math.max(other.max, a.max);
+        if (a.set){ if (!other.set) other.set = new Set(); a.set.forEach(v => other.set.add(v)); }
+        sm.delete(l);
+      });
+      sm.set('Others', other);
+    });
+    labels = keep.concat(['Others']);
+  }
+
+  // Cap the number of series so a stacked chart stays legible.
+  let seriesKeys = [...seriesMap.keys()];
+  if (sCol && seriesKeys.length > 8){
+    const totals = seriesKeys.map(k => {
+      let t = 0; seriesMap.get(k).forEach(a => { const v = finish(a); if (typeof v === 'number') t += Math.abs(v); });
+      return [k, t];
+    }).sort((a,b) => b[1]-a[1]);
+    seriesKeys = totals.slice(0, 8).map(x => x[0]);
+  }
+
+  const series = seriesKeys.map(sk => ({
+    label: sk === '__all__' ? (agg === 'count' ? 'Rows' : yName) : sk,
+    data: labels.map(l => finish(seriesMap.get(sk).get(l)))
+  }));
+
+  return {labels, series, truncated, granularity:gran};
+}
+
+/* Histogram: splits one numeric column into equal-width bins. */
+function histogram(rows, name, bins){
+  const col = colByName(name);
+  const vals = [];
+  for (let i = 0; i < rows.length; i++){ const v = rows[i][name]; if (typeof v === 'number' && isFinite(v)) vals.push(v); }
+  if (!vals.length) return {labels:[], series:[{label:'Rows', data:[]}]};
+  // A plain loop, not Math.min(...vals) — spreading 100,000 arguments
+  // overflows the call stack.
+  let min = vals[0], max = vals[0];
+  for (let i = 1; i < vals.length; i++){ if (vals[i] < min) min = vals[i]; if (vals[i] > max) max = vals[i]; }
+  if (min === max){ max = min + 1; }
+  const k = bins || CONFIG.HISTOGRAM_BINS;
+  const width = (max - min) / k;
+  const counts = new Array(k).fill(0);
+  vals.forEach(v => { let idx = Math.floor((v - min) / width); if (idx >= k) idx = k - 1; if (idx < 0) idx = 0; counts[idx]++; });
+  const labels = counts.map((_, i) => `${fmtNum(min + i*width)} – ${fmtNum(min + (i+1)*width)}`);
+  return {labels, series:[{label:'Rows', data:counts}]};
+}
+
+/* Scatter: two measures against each other, sampled if there are lots of rows. */
+function scatterPoints(rows, xName, yName){
+  const pts = [];
+  const step = Math.max(1, Math.ceil(rows.length / CONFIG.SCATTER_MAX_POINTS));
+  for (let i = 0; i < rows.length; i += step){
+    const x = rows[i][xName], y = rows[i][yName];
+    if (typeof x === 'number' && typeof y === 'number' && isFinite(x) && isFinite(y)) pts.push({x, y});
+  }
+  return pts;
+}
+
+/* =====================================================================
+   STEP 3 — AUTOMATIC CHART SELECTION
+   Reads the column profile and writes a list of chart specs, best first.
+   ===================================================================== */
+function autoCharts(){
+  const M = rankMeasures(), D = rankDimensions(), T = timeCols();
+  const dims = D.filter(c => c.role === 'dimension');
+  const hdims = D.filter(c => c.role === 'highdim');
+  // Charts are gathered in two passes. The first gives every rule that fires
+  // one slot, so the dashboard covers as many different angles as possible.
+  // The second fills any leftover slots with second-best variants.
+  const specs = [], extra = [];
+  const seen = new Set();
+  const mk = (bucket) => (s) => {
+    const key = [s.type, s.x, s.y, s.agg, s.series].join('|');
+    if (seen.has(key)) return;
+    seen.add(key); bucket.push(s);
+  };
+  const add = mk(specs), later = mk(extra);
+
+  // RULE 1 — a date column plus a measure → trend over time
+  if (T.length && M.length){
+    add({type:'line', x:T[0].name, y:M[0].name, agg:'sum'});
+    if (M.length > 1) later({type:'line', x:T[0].name, y:M[1].name, agg:'sum'});
+  }
+  // A date column with no measures at all → count of rows over time
+  if (T.length && !M.length) add({type:'line', x:T[0].name, y:null, agg:'count'});
+
+  // RULE 2 — dimension (≤15 unique) plus a measure → sorted bar chart
+  if (dims.length && M.length){
+    add({type:'bar', x:dims[0].name, y:M[0].name, agg:'sum'});
+    if (dims.length > 1) later({type:'bar', x:dims[1].name, y:M[0].name, agg:'sum'});
+    if (M.length > 1)    later({type:'bar', x:dims[0].name, y:M[1].name, agg:'sum'});
+  }
+
+  // RULE 3 — a dimension with 2–6 values → donut showing share of total.
+  // Prefer one that isn't already the bar chart's grouping, so the two charts
+  // say different things.
+  const donutable = dims.filter(c => c.unique >= 2 && c.unique <= CONFIG.DONUT_MAX_UNIQUE);
+  const donutDim = donutable.find(c => !dims.length || c.name !== dims[0].name) || donutable[0];
+  if (donutDim) add({type:'donut', x:donutDim.name, y:M.length ? M[0].name : null, agg:M.length ? 'sum' : 'count'});
+
+  // RULE 4 — high-cardinality dimension → horizontal Top 10 bar
+  if (hdims.length){
+    add({type:'hbar', x:hdims[0].name, y:M.length ? M[0].name : null, agg:M.length ? 'sum' : 'count', topN:CONFIG.TOP_N});
+  }
+
+  // RULE 5 — two measures → scatter plot to reveal correlation
+  if (M.length >= 2) add({type:'scatter', x:M[0].name, y:M[1].name, agg:'none'});
+
+  // RULE 6 — two dimensions plus a measure → stacked bar
+  if (dims.length >= 2 && M.length){
+    add({type:'stacked', x:dims[0].name, y:M[0].name, agg:'sum', series:dims[1].name});
+  }
+
+  // RULE 7 — a measure on its own → histogram of its distribution
+  if (M.length) add({type:'histogram', x:M[0].name, y:M[0].name, agg:'none'});
+  if (M.length > 2) later({type:'bar', x:(dims[0]||hdims[0]||{}).name, y:M[2].name, agg:'sum', topN:CONFIG.TOP_N});
+
+  // RULE 8 — nothing numeric anywhere → frequency counts of the text columns
+  if (!M.length){
+    D.slice(0, 6).forEach(d => add({
+      type: d.unique > CONFIG.DIMENSION_MAX_UNIQUE ? 'hbar' : 'bar',
+      x: d.name, y: null, agg:'count', topN:CONFIG.TOP_N
+    }));
+  }
+
+  // Fill remaining slots: second-best variants first, then plain row counts
+  // and extra histograms, until we reach at least the minimum.
+  D.forEach(d => later({type:'bar', x:d.name, y:null, agg:'count', topN:CONFIG.TOP_N}));
+  M.forEach(m => later({type:'histogram', x:m.name, y:m.name, agg:'none'}));
+
+  // Rule-driven charts first, then fillers, capped at MAX_CHARTS. Fillers that
+  // would put a third chart on a column we've already used twice are pushed to
+  // the back, so the dashboard doesn't end up showing one column five ways.
+  const chosen = specs.filter(s => s.x);
+  const used = {};
+  chosen.forEach(s => used[s.x] = (used[s.x] || 0) + 1);
+  const fresh = [], repeats = [];
+  extra.filter(s => s.x).forEach(s => ((used[s.x] || 0) >= 2 ? repeats : fresh).push(s));
+
+  return chosen.concat(fresh, repeats).slice(0, CONFIG.MAX_CHARTS).map(s => Object.assign({
+    id: 'c' + (++APP.chartSeq), topN: s.topN || (s.type === 'hbar' ? CONFIG.TOP_N : 0)
+  }, s));
+}
+
+/* Writes a plain-English chart title, e.g. "Total Revenue by Region". */
+function chartTitle(spec){
+  const x = spec.x, y = spec.y;
+  if (spec.type === 'histogram') return `Distribution of ${x}`;
+  if (spec.type === 'scatter')   return `${y} vs ${x}`;
+  if (spec.type === 'donut' || spec.type === 'pie')
+    return `Share of ${(spec.agg === 'count' || !y) ? 'rows' : y} by ${x}`;
+  const xCol = colByName(x);
+  const by = xCol && xCol.type === 'date' ? `by ${granLabel(spec.granularity || pickGranularity(xCol))}` : `by ${x}`;
+  const head = (spec.agg === 'count' || !y) ? 'Row count' : `${AGG_TITLE[spec.agg] || 'Total'} ${y}`;
+  const split = spec.series ? `, split by ${spec.series}` : '';
+  const top = (spec.topN && xCol && xCol.type !== 'date' && xCol.unique > spec.topN) ? ` (top ${spec.topN})` : '';
+  return `${head} ${by}${split}${top}`;
+}
+function granLabel(g){ return {day:'day', month:'month', quarter:'quarter', year:'year'}[g] || 'period'; }
+
+/* =====================================================================
+   CHART RENDERING
+   ===================================================================== */
+function themeColors(){
+  const cs = getComputedStyle(document.body);
+  return {
+    text: cs.getPropertyValue('--text').trim(),
+    muted: cs.getPropertyValue('--muted').trim(),
+    grid: APP.dark ? 'rgba(244,237,226,.12)' : 'rgba(14,14,16,.08)',
+    card: cs.getPropertyValue('--card').trim()
+  };
+}
+
+function renderChartsGrid(){
+  const grid = $('chartsGrid');
+  APP.charts.forEach(c => { if (c.instance){ c.instance.destroy(); c.instance = null; } });
+  grid.innerHTML = '';
+  APP.charts.forEach(spec => grid.appendChild(buildChartCard(spec)));
+  APP.charts.forEach(spec => drawChart(spec));
+  $('chartHint').textContent = APP.charts.length + ' charts, chosen from your columns';
+}
+
+function buildChartCard(spec){
+  const card = el('div','card chart-card');
+  if (spec.type === 'stacked' || spec.type === 'scatter') card.classList.add('wide');
+  card.dataset.id = spec.id;
+
+  const head = el('div','chart-head');
+  head.innerHTML = `<h3>${esc(chartTitle(spec))}</h3>`;
+  const png = el('button','btn sm no-print','PNG');
+  png.title = 'Download this chart as a PNG';
+  png.onclick = () => downloadChartPNG(spec);
+  const kill = el('button','btn sm no-print','✕');
+  kill.title = 'Remove this chart';
+  kill.onclick = () => { if (spec.instance) spec.instance.destroy(); APP.charts = APP.charts.filter(c => c.id !== spec.id); renderChartsGrid(); };
+  head.appendChild(png); head.appendChild(kill);
+  card.appendChild(head);
+
+  // Per-chart controls: chart type, measure, grouping column.
+  const tools = el('div','chart-tools no-print');
+  const typeOpts = [['bar','Bar'],['hbar','Horizontal bar'],['line','Line'],['area','Area'],['donut','Donut'],['pie','Pie'],['stacked','Stacked bar'],['histogram','Histogram'],['scatter','Scatter']];
+  tools.appendChild(mkSelect(typeOpts, spec.type, v => { spec.type = v; if (v === 'stacked' && !spec.series){ const d = rankDimensions()[1] || rankDimensions()[0]; spec.series = d && d.name !== spec.x ? d.name : null; } refreshChart(spec, true); }, 'Chart type'));
+
+  if (spec.type !== 'histogram' && spec.type !== 'scatter'){
+    const groupOpts = APP.columns.filter(c => ['dimension','highdim','time'].includes(c.role)).map(c => [c.name, c.name]);
+    if (groupOpts.length) tools.appendChild(mkSelect(groupOpts, spec.x, v => { spec.x = v; spec.granularity = null; refreshChart(spec, true); }, 'Group by'));
+    const measOpts = [['__count__','Count of rows']].concat(measures().map(c => [c.name, c.name]));
+    tools.appendChild(mkSelect(measOpts, spec.agg === 'count' ? '__count__' : spec.y, v => {
+      if (v === '__count__'){ spec.agg = 'count'; spec.y = null; } else { spec.y = v; if (spec.agg === 'count') spec.agg = 'sum'; }
+      refreshChart(spec, true);
+    }, 'Value'));
+    if (spec.agg !== 'count') tools.appendChild(mkSelect(Object.keys(AGGS).filter(a => a !== 'count').map(a => [a, AGGS[a].label]), spec.agg, v => { spec.agg = v; refreshChart(spec, true); }, 'Aggregation'));
+    const xc = colByName(spec.x);
+    if (xc && xc.type === 'date') tools.appendChild(mkSelect([['day','By day'],['month','By month'],['quarter','By quarter'],['year','By year']], spec.granularity || pickGranularity(xc), v => { spec.granularity = v; refreshChart(spec, true); }, 'Time grouping'));
+    if (spec.type === 'stacked'){
+      const opts = [['','No split']].concat(groupables().filter(c => c.name !== spec.x).map(c => [c.name, c.name]));
+      tools.appendChild(mkSelect(opts, spec.series || '', v => { spec.series = v || null; refreshChart(spec, true); }, 'Split by'));
+    }
+  } else if (spec.type === 'histogram'){
+    tools.appendChild(mkSelect(measures().map(c => [c.name, c.name]), spec.x, v => { spec.x = v; spec.y = v; refreshChart(spec, true); }, 'Column'));
+  } else {
+    const m = measures().map(c => [c.name, c.name]);
+    tools.appendChild(mkSelect(m, spec.x, v => { spec.x = v; refreshChart(spec, true); }, 'X axis'));
+    tools.appendChild(mkSelect(m, spec.y, v => { spec.y = v; refreshChart(spec, true); }, 'Y axis'));
+  }
+  card.appendChild(tools);
+
+  const body = el('div','chart-body');
+  body.innerHTML = `<canvas id="cv-${spec.id}"></canvas>`;
+  card.appendChild(body);
+  card.appendChild(el('div','chart-note'));
+  return card;
+}
+
+function mkSelect(options, value, onChange, title){
+  const s = document.createElement('select');
+  s.title = title || '';
+  s.innerHTML = options.map(([v,l]) => `<option value="${esc(v)}" ${String(v)===String(value)?'selected':''}>${esc(l)}</option>`).join('');
+  s.onchange = () => onChange(s.value);
+  return s;
+}
+
+/* Rebuilds one chart card in place (used when its controls change). */
+function refreshChart(spec, rebuildCard){
+  const card = document.querySelector(`.chart-card[data-id="${spec.id}"]`);
+  if (!card) return;
+  if (spec.instance){ spec.instance.destroy(); spec.instance = null; }
+  if (rebuildCard){
+    const fresh = buildChartCard(spec);
+    card.replaceWith(fresh);
+  }
+  drawChart(spec);
+}
+
+function drawChart(spec){
+  const cv = $('cv-' + spec.id);
+  if (!cv) return;
+  const note = document.querySelector(`.chart-card[data-id="${spec.id}"] .chart-note`);
+  const rows = APP.filtered;
+  const th = themeColors();
+  const P = CONFIG.PALETTE;
+
+  if (spec.instance){ spec.instance.destroy(); spec.instance = null; }
+
+  if (!rows.length){
+    if (note) note.textContent = 'No rows match the current filters.';
+    return;
+  }
+
+  let data, options, kind = 'bar';
+  const common = {
+    responsive:true, maintainAspectRatio:false,
+    animation:{duration:350},
+    plugins:{
+      legend:{display:false, labels:{color:th.text, font:{size:11}}},
+      tooltip:{
+        backgroundColor: APP.dark ? '#0E0E10' : '#FFFFFF',
+        titleColor: th.text, bodyColor: th.text,
+        borderColor: 'rgba(128,128,128,.3)', borderWidth:1, padding:10,
+        callbacks:{ label: (c) => {
+          const raw = c.parsed && typeof c.parsed.y === 'number' ? c.parsed.y : (typeof c.parsed === 'number' ? c.parsed : c.raw);
+          const lbl = c.dataset.label ? c.dataset.label + ': ' : '';
+          return lbl + (typeof raw === 'number' ? fmtFull(raw) : raw);
+        }}
+      }
+    },
+    scales:{
+      x:{ ticks:{color:th.muted, font:{size:10}, maxRotation:50, autoSkip:true, maxTicksLimit:14}, grid:{color:th.grid, drawBorder:false} },
+      y:{ ticks:{color:th.muted, font:{size:10}, callback:(v) => fmtNum(v)}, grid:{color:th.grid, drawBorder:false}, beginAtZero:true }
+    }
+  };
+
+  try {
+    if (spec.type === 'histogram'){
+      const h = histogram(rows, spec.x, CONFIG.HISTOGRAM_BINS);
+      kind = 'bar';
+      data = {labels:h.labels, datasets:[{label:'Rows', data:h.series[0].data, backgroundColor:P[0], borderRadius:4, borderSkipped:false}]};
+      options = deep(common, {scales:{x:{ticks:{maxRotation:60}}, y:{title:{display:true, text:'Rows', color:th.muted}}}});
+      if (note) note.textContent = `${CONFIG.HISTOGRAM_BINS} equal-width bins across ${spec.x}.`;
+
+    } else if (spec.type === 'scatter'){
+      const pts = scatterPoints(rows, spec.x, spec.y);
+      kind = 'scatter';
+      data = {datasets:[{label:`${spec.y} vs ${spec.x}`, data:pts, backgroundColor:P[0]+'cc', pointRadius:3, pointHoverRadius:5}]};
+      options = deep(common, {
+        scales:{
+          x:{type:'linear', ticks:{color:th.muted, font:{size:10}, callback:(v)=>fmtNum(v)}, grid:{color:th.grid}, title:{display:true, text:spec.x, color:th.muted}},
+          y:{ticks:{color:th.muted, font:{size:10}, callback:(v)=>fmtNum(v)}, grid:{color:th.grid}, beginAtZero:false, title:{display:true, text:spec.y, color:th.muted}}
+        },
+        plugins:{tooltip:{callbacks:{label:(c)=>`${spec.x}: ${fmtFull(c.parsed.x)} · ${spec.y}: ${fmtFull(c.parsed.y)}`}}}
+      });
+      const r = correlation(pts);
+      if (note) note.textContent = `${pts.length.toLocaleString()} points${pts.length < rows.length ? ' (sampled)' : ''}${r === null ? '' : ' · correlation r = ' + r.toFixed(2)}.`;
+
+    } else {
+      const res = aggregate(rows, spec);
+      const isPieish = spec.type === 'donut' || spec.type === 'pie';
+      const stacked = spec.type === 'stacked';
+      const multi = res.series.length > 1;
+
+      if (isPieish){
+        kind = spec.type === 'donut' ? 'doughnut' : 'pie';
+        data = {labels:res.labels, datasets:[{data:res.series[0].data, backgroundColor:res.labels.map((_,i)=>P[i % P.length]), borderWidth:2, borderColor:th.card}]};
+        const total = res.series[0].data.reduce((a,b)=>a+(b||0),0);
+        options = deep(common, {
+          cutout: spec.type === 'donut' ? '58%' : 0,
+          plugins:{
+            legend:{display:true, position:'right', labels:{color:th.text, font:{size:11}, boxWidth:12, padding:10}},
+            tooltip:{callbacks:{label:(c)=>`${c.label}: ${fmtFull(c.parsed)} (${total ? (c.parsed/total*100).toFixed(1) : 0}%)`}}
+          }
+        });
+        delete options.scales;   // circular charts have no x/y axes
+      } else {
+        kind = (spec.type === 'line' || spec.type === 'area') ? 'line' : 'bar';
+        data = {labels:res.labels, datasets:res.series.map((s, i) => ({
+          label:s.label, data:s.data,
+          backgroundColor: kind === 'line' ? P[i % P.length] + (spec.type === 'area' ? '33' : 'ff') : P[i % P.length],
+          borderColor:P[i % P.length], borderWidth: kind === 'line' ? 2 : 0,
+          fill: spec.type === 'area', tension:0.3,
+          pointRadius: res.labels.length > 40 ? 0 : 3, pointHoverRadius:5,
+          borderRadius: kind === 'bar' ? 4 : 0, borderSkipped:false,
+          stack: stacked ? 'a' : undefined
+        }))};
+        options = deep(common, {
+          indexAxis: spec.type === 'hbar' ? 'y' : 'x',
+          plugins:{legend:{display: multi, position:'bottom', labels:{color:th.text, font:{size:11}, boxWidth:12}}},
+          scales: spec.type === 'hbar'
+            ? {x:{ticks:{color:th.muted, font:{size:10}, callback:(v)=>fmtNum(v)}, grid:{color:th.grid}, beginAtZero:true, stacked},
+               y:{ticks:{color:th.muted, font:{size:10}}, grid:{display:false}, stacked}}
+            : {x:{ticks:{color:th.muted, font:{size:10}, maxRotation:50, autoSkip:true, maxTicksLimit:14}, grid:{color:th.grid}, stacked},
+               y:{ticks:{color:th.muted, font:{size:10}, callback:(v)=>fmtNum(v)}, grid:{color:th.grid}, beginAtZero:true, stacked}}
+        });
+      }
+
+      if (note){
+        const bits = [];
+        bits.push(`${res.labels.length} group${res.labels.length===1?'':'s'} from ${rows.length.toLocaleString()} rows`);
+        if (res.truncated) bits.push(`${res.truncated} smaller categories bundled into “Others”`);
+        note.textContent = bits.join(' · ') + '.';
+      }
+    }
+
+    spec.instance = new Chart(cv.getContext('2d'), {type:kind, data, options});
+  } catch (err){
+    console.error('Chart failed', spec, err);
+    if (note) note.textContent = 'This combination can’t be charted — try a different column.';
+  }
+}
+
+/* Pearson correlation, shown under scatter plots. */
+function correlation(pts){
+  const n = pts.length; if (n < 3) return null;
+  let sx=0, sy=0, sxy=0, sxx=0, syy=0;
+  pts.forEach(p => { sx+=p.x; sy+=p.y; sxy+=p.x*p.y; sxx+=p.x*p.x; syy+=p.y*p.y; });
+  const num = n*sxy - sx*sy;
+  const den = Math.sqrt((n*sxx - sx*sx) * (n*syy - sy*sy));
+  return den === 0 ? null : num/den;
+}
+
+/* Small deep-merge so chart options can be layered without repetition. */
+function deep(a, b){
+  const out = Array.isArray(a) ? a.slice() : Object.assign({}, a);
+  for (const k in b){
+    if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) && a[k] && typeof a[k] === 'object') out[k] = deep(a[k], b[k]);
+    else out[k] = b[k];
+  }
+  return out;
+}
+
+
+/* =====================================================================
+   STEP 3 (part 2) — KPI CARDS
+   Row count, the top three measures, the main dimension, the date range.
+   ===================================================================== */
+function buildKPIs(){
+  const rows = APP.filtered, all = APP.rows;
+  const cards = [];
+
+  cards.push({val: rows.length.toLocaleString(), lbl:'Rows', sub: rows.length !== all.length ? `filtered from ${all.length.toLocaleString()}` : `${APP.columns.length} columns`});
+
+  // Sum + average for the three most useful measures, recomputed live.
+  rankMeasures().slice(0, 3).forEach((c, i) => {
+    let sum = 0, n = 0;
+    for (let r = 0; r < rows.length; r++){ const v = rows[r][c.name]; if (typeof v === 'number' && isFinite(v)){ sum += v; n++; } }
+    cards.push({val: fmtNum(sum), lbl: 'Total ' + c.name, sub: 'Average ' + fmtFull(n ? sum/n : 0), alt: i === 1});
+  });
+
+  const topDim = rankDimensions()[0];
+  if (topDim){
+    const s = new Set();
+    for (let r = 0; r < rows.length; r++){ const v = rows[r][topDim.name]; if (v !== null && v !== undefined && v !== '') s.add(v); }
+    cards.push({val: s.size.toLocaleString(), lbl: 'Distinct ' + topDim.name, sub: topDim.top[0] ? `most common: ${topDim.top[0].value}` : '', alt:true});
+  }
+
+  const t = timeCols()[0];
+  if (t){
+    let lo = null, hi = null;
+    for (let r = 0; r < rows.length; r++){ const v = rows[r][t.name]; if (v instanceof Date && !isNaN(v)){ if (!lo || v < lo) lo = v; if (!hi || v > hi) hi = v; } }
+    const days = (lo && hi) ? Math.round((hi - lo) / 86400000) + 1 : 0;
+    cards.push({val: lo ? fmtDate(lo).replace(/,/,'') : '—', lbl: t.name + ' range', sub: hi ? `to ${fmtDate(hi)} · ${days.toLocaleString()} days` : ''});
+  }
+
+  $('kpiRow').innerHTML = cards.slice(0, 6).map(c =>
+    `<div class="kpi${c.alt ? ' alt' : ''}"><div class="val">${esc(c.val)}</div><div class="lbl">${esc(c.lbl)}</div>${c.sub ? `<div class="sub">${esc(c.sub)}</div>` : ''}</div>`
+  ).join('');
+}
+
+/* =====================================================================
+   STEP 4 — FILTER BAR
+   A multi-select for every dimension, a date range for every date column.
+   ===================================================================== */
+function buildFilterBar(){
+  const bar = $('filterBar');
+  bar.innerHTML = '';
+  const cols = APP.columns.filter(c => ['dimension','highdim','time'].includes(c.role));
+
+  if (!cols.length){
+    bar.innerHTML = '<span style="color:var(--muted);font-size:12.5px">No columns in this file can be filtered — nothing has a small enough set of repeated values.</span>';
+    return;
+  }
+  bar.appendChild(el('span','', '<span style="font-size:12px;color:var(--muted);font-weight:500">Filters</span>'));
+
+  cols.forEach(c => bar.appendChild(c.type === 'date' ? dateFilter(c) : catFilter(c)));
+}
+
+function catFilter(col){
+  const wrap = el('div','filter');
+  const btn = document.createElement('button');
+  const pop = el('div','filter-pop');
+  wrap.appendChild(btn); wrap.appendChild(pop);
+
+  const values = uniqueValues(col.name);
+
+  const label = () => {
+    const f = APP.filters[col.name];
+    const sel = f && f.selected.size;
+    btn.className = sel ? 'active' : '';
+    btn.innerHTML = `${esc(col.name)} <span class="pop-count">${sel ? sel + ' selected' : 'All'}</span> <span class="caret">▾</span>`;
+  };
+
+  pop.innerHTML = `<input type="search" placeholder="Find a value…" />
+    <div class="row"><button class="btn sm" data-all>Select all</button><button class="btn sm" data-none>Clear</button></div>
+    <div class="opts"></div>`;
+  const opts = pop.querySelector('.opts');
+  const search = pop.querySelector('input');
+
+  const paint = (q) => {
+    const f = APP.filters[col.name];
+    const list = q ? values.filter(v => v.toLowerCase().includes(q.toLowerCase())) : values;
+    opts.innerHTML = list.slice(0, 400).map(v =>
+      `<label><input type="checkbox" value="${esc(v)}" ${f && f.selected.has(v) ? 'checked' : ''}><span>${esc(v)}</span></label>`
+    ).join('') + (list.length > 400 ? `<div class="pop-count" style="padding:6px">Showing first 400 of ${list.length}</div>` : '');
+    opts.querySelectorAll('input').forEach(cb => cb.onchange = () => {
+      const f2 = APP.filters[col.name] || (APP.filters[col.name] = {kind:'cat', selected:new Set()});
+      if (cb.checked) f2.selected.add(cb.value); else f2.selected.delete(cb.value);
+      if (!f2.selected.size) delete APP.filters[col.name];
+      label(); applyFiltersAndRedraw();
+    });
+  };
+
+  search.oninput = () => paint(search.value);
+  pop.querySelector('[data-all]').onclick = () => { APP.filters[col.name] = {kind:'cat', selected:new Set(values)}; paint(search.value); label(); applyFiltersAndRedraw(); };
+  pop.querySelector('[data-none]').onclick = () => { delete APP.filters[col.name]; paint(search.value); label(); applyFiltersAndRedraw(); };
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const open = pop.classList.contains('open');
+    closeAllPops();
+    if (!open){ paint(''); search.value = ''; pop.classList.add('open'); }
+  };
+  pop.onclick = e => e.stopPropagation();
+  label();
+  return wrap;
+}
+
+function dateFilter(col){
+  const wrap = el('div','filter');
+  const btn = document.createElement('button');
+  const pop = el('div','filter-pop');
+  wrap.appendChild(btn); wrap.appendChild(pop);
+
+  const iso = d => d instanceof Date && !isNaN(d) ? `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` : '';
+  pop.innerHTML = `<div style="display:grid;gap:8px">
+      <label style="display:grid;gap:4px"><span class="pop-count">From</span><input type="date" data-from value="${iso(col.dateMin)}"></label>
+      <label style="display:grid;gap:4px"><span class="pop-count">To</span><input type="date" data-to value="${iso(col.dateMax)}"></label>
+      <button class="btn sm" data-clear>Clear</button>
+    </div>`;
+  const from = pop.querySelector('[data-from]'), to = pop.querySelector('[data-to]');
+
+  const label = () => {
+    const f = APP.filters[col.name];
+    btn.className = f ? 'active' : '';
+    btn.innerHTML = `${esc(col.name)} <span class="pop-count">${f ? fmtDate(f.from) + ' → ' + fmtDate(f.to) : 'All dates'}</span> <span class="caret">▾</span>`;
+  };
+  const apply = () => {
+    if (!from.value && !to.value){ delete APP.filters[col.name]; }
+    else {
+      const a = from.value ? new Date(from.value + 'T00:00:00') : new Date(-8640000000000);
+      const b = to.value ? new Date(to.value + 'T23:59:59') : new Date(8640000000000);
+      APP.filters[col.name] = {kind:'date', from:a, to:b};
+    }
+    label(); applyFiltersAndRedraw();
+  };
+  from.onchange = to.onchange = apply;
+  pop.querySelector('[data-clear]').onclick = () => { from.value = ''; to.value = ''; apply(); };
+
+  btn.onclick = e => { e.stopPropagation(); const open = pop.classList.contains('open'); closeAllPops(); if (!open) pop.classList.add('open'); };
+  pop.onclick = e => e.stopPropagation();
+  label();
+  return wrap;
+}
+
+function closeAllPops(){ document.querySelectorAll('.filter-pop.open').forEach(p => p.classList.remove('open')); }
+document.addEventListener('click', closeAllPops);
+
+function uniqueValues(name){
+  const s = new Set();
+  for (let i = 0; i < APP.rows.length && s.size < 2000; i++){
+    const v = APP.rows[i][name];
+    if (v !== null && v !== undefined && v !== '') s.add(typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v));
+  }
+  return [...s].sort((a,b) => a.localeCompare(b, undefined, {numeric:true}));
+}
+
+/* Applies every active filter to APP.rows → APP.filtered. */
+function applyFilters(){
+  const entries = Object.entries(APP.filters);
+  if (!entries.length){ APP.filtered = APP.rows; return; }
+  APP.filtered = APP.rows.filter(r => {
+    for (let i = 0; i < entries.length; i++){
+      const [name, f] = entries[i];
+      const v = r[name];
+      if (f.kind === 'cat'){
+        const key = typeof v === 'boolean' ? (v ? 'Yes' : 'No') : (v === null || v === undefined ? '' : String(v));
+        if (!f.selected.has(key)) return false;
+      } else {
+        if (!(v instanceof Date) || isNaN(v) || v < f.from || v > f.to) return false;
+      }
+    }
+    return true;
+  });
+}
+
+function applyFiltersAndRedraw(){
+  applyFilters();
+  APP.page = 0;
+  buildKPIs();
+  APP.charts.forEach(spec => drawChart(spec));
+  renderTable();
+  buildInsights();
+}
+
+/* =====================================================================
+   STEP 4 (part 2) — RAW DATA TABLE: sortable, searchable, paginated
+   ===================================================================== */
+function tableRows(){
+  let rows = APP.filtered;
+  if (APP.search){
+    const q = APP.search.toLowerCase();
+    const names = APP.columns.map(c => c.name);
+    rows = rows.filter(r => names.some(n => { const v = r[n]; return v !== null && String(v instanceof Date ? fmtDate(v) : v).toLowerCase().includes(q); }));
+  }
+  if (APP.sort.col){
+    const n = APP.sort.col, d = APP.sort.dir;
+    rows = rows.slice().sort((a, b) => {
+      const x = a[n], y = b[n];
+      if (x === null || x === undefined) return 1;
+      if (y === null || y === undefined) return -1;
+      if (typeof x === 'number' && typeof y === 'number') return (x - y) * d;
+      if (x instanceof Date && y instanceof Date) return (x - y) * d;
+      return String(x).localeCompare(String(y), undefined, {numeric:true}) * d;
+    });
+  }
+  return rows;
+}
+
+function renderTable(){
+  const rows = tableRows();
+  const cols = APP.columns;
+  const pages = Math.max(1, Math.ceil(rows.length / CONFIG.PAGE_SIZE));
+  if (APP.page >= pages) APP.page = pages - 1;
+  const slice = rows.slice(APP.page * CONFIG.PAGE_SIZE, (APP.page + 1) * CONFIG.PAGE_SIZE);
+
+  const head = '<thead><tr>' + cols.map(c => {
+    const arrow = APP.sort.col === c.name ? (APP.sort.dir === 1 ? ' ↑' : ' ↓') : '';
+    return `<th data-col="${esc(c.name)}">${esc(c.name)}${arrow}</th>`;
+  }).join('') + '</tr></thead>';
+
+  const body = '<tbody>' + (slice.length ? slice.map(r => '<tr>' + cols.map(c => {
+    const v = r[c.name];
+    if (v === null || v === undefined || v === '') return '<td style="color:var(--muted)">—</td>';
+    if (v instanceof Date) return `<td>${esc(fmtDate(v))}</td>`;
+    if (typeof v === 'number') return `<td class="num">${esc(fmtFull(v))}</td>`;
+    if (typeof v === 'boolean') return `<td>${v ? 'Yes' : 'No'}</td>`;
+    const s = String(v);
+    return `<td title="${esc(s)}">${esc(s.length > 60 ? s.slice(0,60) + '…' : s)}</td>`;
+  }).join('') + '</tr>').join('') : `<tr><td colspan="${cols.length}" style="text-align:center;color:var(--muted);padding:24px">No rows match your filters or search.</td></tr>`) + '</tbody>';
+
+  const t = $('dataTable');
+  t.innerHTML = head + body;
+  t.querySelectorAll('th').forEach(th => th.onclick = () => {
+    const c = th.dataset.col;
+    APP.sort = {col:c, dir: APP.sort.col === c ? -APP.sort.dir : 1};
+    renderTable();
+  });
+
+  $('pageInfo').textContent = `Page ${APP.page + 1} of ${pages} · ${rows.length.toLocaleString()} rows`;
+  $('tableHint').textContent = `${CONFIG.PAGE_SIZE} rows per page, reflecting the filters above`;
+}
+
+/* =====================================================================
+   STEP 4 (part 3) — PIVOT TABLE
+   ===================================================================== */
+function buildPivotControls(){
+  const g = groupables().concat(timeCols());
+  const m = measures();
+  fill($('pvRows'), g.map(c => [c.name, c.name]));
+  fill($('pvCols'), [['','(none)']].concat(g.map(c => [c.name, c.name])));
+  fill($('pvVals'), [['__count__','Count of rows']].concat(m.map(c => [c.name, c.name])));
+  fill($('pvAgg'), Object.keys(AGGS).map(a => [a, AGGS[a].label]));
+  $('pvAgg').value = m.length ? 'sum' : 'count';
+  if (g.length > 1) $('pvCols').selectedIndex = Math.min(2, $('pvCols').options.length - 1);
+  $('pvBuild').onclick = renderPivot;
+  if (g.length) renderPivot();
+  function fill(sel, opts){ sel.innerHTML = opts.map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(''); }
+}
+
+function renderPivot(){
+  const rowCol = $('pvRows').value, colCol = $('pvCols').value;
+  let valCol = $('pvVals').value, agg = $('pvAgg').value;
+  if (valCol === '__count__') agg = 'count';
+  const out = $('pivotTable');
+  if (!rowCol){ out.innerHTML = '<tbody><tr><td style="padding:16px;color:var(--muted)">This file has no column that can be used as pivot rows.</td></tr></tbody>'; return; }
+
+  const res = aggregate(APP.filtered, {x:rowCol, y:valCol === '__count__' ? null : valCol, agg, series:colCol || null, topN: 50});
+  const colLabels = res.series.map(s => s.label);
+
+  // Column totals + grand total
+  const colTotals = colLabels.map((_, si) => res.series[si].data.reduce((a,b) => a + (b || 0), 0));
+  const grand = colTotals.reduce((a,b) => a+b, 0);
+
+  const head = `<thead><tr><th>${esc(rowCol)}</th>${colLabels.map(l => `<th style="text-align:right">${esc(l)}</th>`).join('')}<th style="text-align:right">Total</th></tr></thead>`;
+  const body = res.labels.map((lab, i) => {
+    let rowTotal = 0;
+    const cells = res.series.map(s => { const v = s.data[i]; if (typeof v === 'number') rowTotal += v; return `<td class="num">${v == null ? '—' : fmtFull(v)}</td>`; }).join('');
+    return `<tr><td><b>${esc(lab)}</b></td>${cells}<td class="num total">${fmtFull(rowTotal)}</td></tr>`;
+  }).join('');
+  const foot = `<tr class="total"><td>Total</td>${colTotals.map(t => `<td class="num">${fmtFull(t)}</td>`).join('')}<td class="num">${fmtFull(grand)}</td></tr>`;
+
+  out.innerHTML = head + '<tbody>' + body + foot + '</tbody>';
+}
+
+/* =====================================================================
+   STEP 6 — EXPORT
+   ===================================================================== */
+function downloadChartPNG(spec){
+  if (!spec.instance) return;
+  const src = spec.instance.canvas;
+  // Draw onto a padded canvas with a solid background so the PNG isn't transparent.
+  const out = document.createElement('canvas');
+  out.width = src.width + 40; out.height = src.height + 80;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--card').trim() || '#fff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text').trim() || '#000';
+  ctx.font = '600 18px Poppins, sans-serif';
+  ctx.fillText(chartTitle(spec), 20, 34);
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted').trim();
+  ctx.fillText(APP.fileName + ' · ' + APP.filtered.length.toLocaleString() + ' rows', 20, 54);
+  ctx.drawImage(src, 20, 66);
+  const a = document.createElement('a');
+  a.download = chartTitle(spec).replace(/[^\w\s-]/g,'').replace(/\s+/g,'-').toLowerCase() + '.png';
+  a.href = out.toDataURL('image/png');
+  a.click();
+  toast('Chart downloaded');
+}
+
+function exportCSV(){
+  const cols = APP.columns.map(c => c.name);
+  const q = (v) => {
+    if (v === null || v === undefined) return '';
+    let s = v instanceof Date ? `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}` : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const lines = [cols.map(q).join(',')];
+  const rows = tableRows();
+  for (let i = 0; i < rows.length; i++) lines.push(cols.map(c => q(rows[i][c])).join(','));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = APP.fileName.replace(/\.[^.]+$/,'') + '-filtered.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast(rows.length.toLocaleString() + ' rows exported');
+}
+
+/* Plain-English summary of what the dashboard shows. */
+function buildInsights(){
+  const rows = APP.filtered, lines = [];
+  lines.push(`${CONFIG.APP_NAME} summary — ${APP.fileName}${APP.sheetNames.length > 1 ? ' · sheet “' + APP.activeSheet + '”' : ''}`);
+  lines.push(`${rows.length.toLocaleString()} rows${rows.length !== APP.rows.length ? ' (filtered from ' + APP.rows.length.toLocaleString() + ')' : ''} across ${APP.columns.length} columns.`);
+
+  const t = timeCols()[0];
+  if (t && t.dateMin) lines.push(`Covers ${fmtDate(t.dateMin)} to ${fmtDate(t.dateMax)} based on ${t.name}.`);
+
+  rankMeasures().slice(0, 3).forEach(c => {
+    let sum = 0, n = 0, mx = -Infinity, mn = Infinity;
+    for (let i = 0; i < rows.length; i++){ const v = rows[i][c.name]; if (typeof v === 'number'){ sum += v; n++; if (v > mx) mx = v; if (v < mn) mn = v; } }
+    if (!n) return;
+    lines.push(`${c.name}: total ${fmtFull(sum)}, average ${fmtFull(sum/n)}, ranging ${fmtFull(mn)} to ${fmtFull(mx)}.`);
+  });
+
+  // Which category leads on the headline measure?
+  const m = rankMeasures()[0], d = rankDimensions()[0];
+  if (m && d){
+    const res = aggregate(rows, {x:d.name, y:m.name, agg:'sum', topN:0});
+    if (res.labels.length){
+      const data = res.series[0].data;
+      const total = data.reduce((a,b) => a + (b||0), 0);
+      const best = data.indexOf(Math.max(...data.map(v => v == null ? -Infinity : v)));
+      if (best >= 0 && total) lines.push(`${res.labels[best]} leads on ${m.name} with ${fmtFull(data[best])} — ${(data[best]/total*100).toFixed(1)}% of the total across ${res.labels.length} ${d.name} values.`);
+    }
+  }
+
+  const missing = APP.columns.filter(c => c.missingPct >= CONFIG.MISSING_WARN_PCT);
+  if (missing.length) lines.push(`Watch out: ${missing.map(c => c.name + ' (' + c.missingPct.toFixed(0) + '% missing)').join(', ')}.`);
+  if (APP.dupeRows) lines.push(`${APP.dupeRows.toLocaleString()} fully duplicate rows were found.`);
+
+  lines.push(`Charts on screen: ${APP.charts.map(chartTitle).join('; ')}.`);
+  $('insightBox').textContent = lines.join('\n');
+}
+
+/* =====================================================================
+   ADD-CHART BUILDER
+   ===================================================================== */
+function wireChartBuilder(){
+  const modal = $('chartModal');
+  const open = () => {
+    const g = groupables().concat(timeCols()).map(c => [c.name, c.name]);
+    const m = measures().map(c => [c.name, c.name]);
+    setOpts($('ncType'), [['bar','Bar'],['hbar','Horizontal bar'],['line','Line'],['area','Area'],['donut','Donut'],['pie','Pie'],['stacked','Stacked bar'],['histogram','Histogram'],['scatter','Scatter']]);
+    setOpts($('ncX'), g.length ? g : m);
+    setOpts($('ncY'), [['__count__','Count of rows']].concat(m));
+    setOpts($('ncAgg'), Object.keys(AGGS).map(a => [a, AGGS[a].label]));
+    setOpts($('ncSeries'), [['','No split']].concat(g));
+    $('ncAgg').value = m.length ? 'sum' : 'count';
+    modal.classList.add('on');
+  };
+  $('addChartBtn').onclick = open;
+  $('ncCancel').onclick = () => modal.classList.remove('on');
+  modal.onclick = e => { if (e.target === modal) modal.classList.remove('on'); };
+  $('ncType').onchange = () => {
+    const t = $('ncType').value;
+    const m = measures().map(c => [c.name, c.name]);
+    if (t === 'histogram' || t === 'scatter') setOpts($('ncX'), m);
+    else setOpts($('ncX'), groupables().concat(timeCols()).map(c => [c.name, c.name]));
+  };
+  $('ncAdd').onclick = () => {
+    const type = $('ncType').value;
+    const y = $('ncY').value;
+    const spec = {
+      id: 'c' + (++APP.chartSeq),
+      type,
+      x: $('ncX').value,
+      y: (type === 'histogram') ? $('ncX').value : (y === '__count__' ? null : y),
+      agg: (type === 'histogram' || type === 'scatter') ? 'none' : (y === '__count__' ? 'count' : $('ncAgg').value),
+      series: type === 'stacked' ? ($('ncSeries').value || null) : ($('ncSeries').value || null),
+      topN: CONFIG.TOP_N
+    };
+    if (type === 'scatter' && (!spec.x || !spec.y || spec.y === null)){ toast('Scatter needs two numeric columns'); return; }
+    if (!spec.x){ toast('Pick a column for the X axis'); return; }
+    APP.charts.push(spec);
+    modal.classList.remove('on');
+    renderChartsGrid();
+    buildInsights();
+    document.querySelector(`.chart-card[data-id="${spec.id}"]`).scrollIntoView({behavior:'smooth', block:'center'});
+  };
+  function setOpts(sel, opts){ sel.innerHTML = opts.map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(''); }
+}
+
+/* =====================================================================
+   BUILD EVERYTHING — called after a load, a sheet switch, or a type override
+   ===================================================================== */
+function buildEverything(){
+  $('emptyState').hidden = true;
+  $('app').hidden = false;
+  $('fileName').textContent = APP.fileName;
+  $('fileMeta').textContent = `${APP.rows.length.toLocaleString()} rows · ${APP.columns.length} columns` +
+    (APP.sheetNames.length > 1 ? ` · sheet “${APP.activeSheet}”` : '');
+
+  // Friendly notices at the top of the dashboard
+  const notes = [];
+  if (!measures().length) notes.push('This file has no numeric column to total up, so the dashboard shows how often each value appears instead.');
+  if (APP.columns.length === 1) notes.push('There’s only one column here, so the dashboard is limited to its distribution.');
+  if (APP.rows.length > CONFIG.BIG_FILE_WARN) notes.push(`This file has ${APP.rows.length.toLocaleString()} rows — charts are aggregated, but filtering may take a moment.`);
+  $('alerts').innerHTML = notes.map(n => `<div class="alert">${esc(n)}</div>`).join('');
+
+  APP.filters = {};
+  applyFilters();
+  APP.charts.forEach(c => { if (c.instance) c.instance.destroy(); });
+  APP.charts = autoCharts();
+
+  buildKPIs();
+  buildFilterBar();
+  renderChartsGrid();
+  buildProfilePanel();
+  buildQualityPanel();
+  buildPivotControls();
+  APP.sort = {col:null, dir:1}; APP.page = 0; APP.search = ''; $('tableSearch').value = '';
+  renderTable();
+  buildInsights();
+}
+
+/* =====================================================================
+   THEME + REMAINING WIRING + START
+   ===================================================================== */
+function setTheme(dark){
+  APP.dark = dark;
+  document.body.classList.toggle('dark', dark);
+  $('themeToggle').textContent = dark ? '☀️' : '🌙';
+  // Charts hold their colours in their options, so they need redrawing.
+  if (!$('app').hidden) APP.charts.forEach(spec => drawChart(spec));
+}
+
+function wireRest(){
+  $('themeToggle').onclick = () => setTheme(!APP.dark);
+  $('headerRow').onchange = () => {
+    const v = Math.max(1, Math.min(+$('headerRow').value || 1, APP.aoa.length));
+    $('headerRow').value = v;
+    APP.headerRow = v - 1;
+    showLoader('Re-reading with row ' + v + ' as the header…');
+    setTimeout(() => rebuildFromAoa(), 30);
+  };
+  $('resetFiltersBtn').onclick = () => { APP.filters = {}; buildFilterBar(); applyFiltersAndRedraw(); toast('Filters reset'); };
+  $('tableSearch').oninput = (e) => { APP.search = e.target.value.trim(); APP.page = 0; renderTable(); };
+  $('prevPage').onclick = () => { if (APP.page > 0){ APP.page--; renderTable(); } };
+  $('nextPage').onclick = () => { APP.page++; renderTable(); };
+  $('exportCsvBtn').onclick = exportCSV;
+  $('printBtn').onclick = () => { document.querySelectorAll('details.panel').forEach(d => d.open = true); setTimeout(() => window.print(), 120); };
+  $('copyInsightsBtn').onclick = async () => {
+    const text = $('insightBox').textContent;
+    try { await navigator.clipboard.writeText(text); toast('Summary copied'); }
+    catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Summary copied'); }
+  };
+  // Keep charts sharp when the window is resized
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => APP.charts.forEach(c => c.instance && c.instance.resize()), 200); });
+  // Never let an unexpected error leave a blank screen
+  window.addEventListener('error', (e) => { hideLoader(); console.error(e.error || e.message); });
+}
+
+(function start(){
+  if (typeof XLSX === 'undefined' || typeof Chart === 'undefined'){
+    document.getElementById('dropZone').insertAdjacentHTML('afterbegin',
+      '<div class="alert">The chart and spreadsheet libraries didn’t load. Connect to the internet once so they can be cached, then reload this page.</div>');
+  }
+  if (window.Chart){
+    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    Chart.defaults.font.size = 11;
+  }
+  // Let CONFIG.APP_NAME drive the visible name in one place
+  $('appName').textContent = CONFIG.APP_NAME;
+  document.title = CONFIG.APP_NAME + ' — Excel to Dashboard';
+  setTheme(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  wireIngest();
+  wireChartBuilder();
+  wireRest();
+})();
+
+</script>
+</body>
+</html>

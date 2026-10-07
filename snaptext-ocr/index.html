@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SnapText — Image to Text Extractor</title>
+
+<!-- Poppins for headings, Inter for body text -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- ===== LIBRARIES (all loaded from CDN, nothing installed) ===== -->
+<!-- Tesseract.js = the OCR engine that actually reads the text -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<!-- pdf.js = lets us open a PDF and turn each page into an image -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<!-- JSZip = bundles many text files into one .zip download -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<style>
+/* ============ COLOUR + SIZE TOKENS — edit these to re-skin the whole app ============ */
+:root{
+  --ink:#0E0E10;        /* charcoal: text + headers */
+  --amber:#F5B301;      /* amber-gold: primary buttons + active states */
+  --cream:#F4EDE2;      /* cream: page background */
+  --rust:#E2582B;       /* rust: destructive actions */
+  --card:#FFFFFF;
+  --muted:#6E6E78;
+  --line:#E7E0D3;
+  --line-soft:#F0EAE0;
+  --good:#1FA971;
+  --warn:#E9A100;
+  --radius:12px;
+  --shadow:0 1px 2px rgba(14,14,16,.05), 0 8px 24px rgba(14,14,16,.06);
+  --shadow-lift:0 2px 6px rgba(14,14,16,.08), 0 16px 40px rgba(14,14,16,.10);
+  --font-head:'Poppins', system-ui, sans-serif;
+  --font-body:'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--cream); color:var(--ink);
+  font-family:var(--font-body); font-size:14px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:var(--font-head); margin:0; letter-spacing:-.01em}
+button,input,select,textarea{font-family:inherit; font-size:inherit; color:inherit}
+::selection{background:var(--amber); color:var(--ink)}
+
+/* ---------- Header ---------- */
+header{
+  position:sticky; top:0; z-index:40;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:14px 22px; background:rgba(244,237,226,.88);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+}
+.brand{display:flex; align-items:center; gap:11px}
+.brand-mark{
+  width:34px; height:34px; border-radius:10px; background:var(--ink);
+  display:grid; place-items:center; box-shadow:var(--shadow);
+}
+.brand-mark svg{width:19px; height:19px}
+.brand h1{font-size:16px; font-weight:600}
+.brand p{margin:0; font-size:11.5px; color:var(--muted); letter-spacing:.02em}
+.privacy{
+  display:inline-flex; align-items:center; gap:7px;
+  background:var(--card); border:1px solid var(--line);
+  border-radius:999px; padding:6px 13px; font-size:12px; font-weight:500;
+  box-shadow:var(--shadow);
+}
+.privacy .dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.header-right{margin-left:auto; display:flex; align-items:center; gap:10px}
+
+/* ---------- Buttons ---------- */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  border:1px solid var(--line); background:var(--card); color:var(--ink);
+  border-radius:10px; padding:9px 14px; font-weight:500; cursor:pointer;
+  transition:transform .12s ease, box-shadow .18s ease, background .18s ease, border-color .18s ease;
+  white-space:nowrap;
+}
+.btn:hover{box-shadow:var(--shadow); transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:focus-visible{outline:2px solid var(--ink); outline-offset:2px}
+.btn.primary{background:var(--amber); border-color:#dfa303; font-weight:600}
+.btn.primary:hover{background:#ffc21f}
+.btn.dark{background:var(--ink); color:#fff; border-color:var(--ink)}
+.btn.danger{color:var(--rust); border-color:#f2c6b6}
+.btn.danger:hover{background:#fdf1ec}
+.btn.small{padding:6px 10px; font-size:12.5px; border-radius:9px}
+.btn:disabled{opacity:.45; cursor:not-allowed; transform:none; box-shadow:none}
+.btn .kbd{font-size:10.5px; color:var(--muted); border:1px solid var(--line); border-radius:5px; padding:1px 5px}
+.btn.primary .kbd{border-color:rgba(14,14,16,.25); color:rgba(14,14,16,.65)}
+
+/* ---------- Layout ---------- */
+.app{display:grid; grid-template-columns:250px minmax(0,1.05fr) minmax(0,1fr); gap:16px; padding:16px 22px 28px; align-items:start}
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow)}
+.pane{display:flex; flex-direction:column; min-height:0}
+.pane-head{display:flex; align-items:center; gap:10px; padding:13px 15px; border-bottom:1px solid var(--line-soft)}
+.pane-head h2{font-size:13px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:var(--muted)}
+.pane-head .spacer{margin-left:auto}
+.pane-body{padding:15px}
+
+/* ---------- Sidebar queue ---------- */
+.queue{max-height:calc(100vh - 150px); overflow:auto; padding:8px}
+.queue-empty{padding:18px 12px; color:var(--muted); font-size:12.5px; text-align:center}
+.qitem{
+  display:flex; gap:10px; align-items:center; width:100%; text-align:left;
+  padding:8px; border-radius:10px; border:1px solid transparent; background:none; cursor:pointer;
+  transition:background .15s ease, border-color .15s ease;
+}
+.qitem:hover{background:#faf7f1}
+.qitem.active{background:#FFF7E0; border-color:var(--amber)}
+.qitem img{width:42px; height:42px; object-fit:cover; border-radius:8px; border:1px solid var(--line); background:#fafafa; flex:none}
+.qitem .meta{min-width:0}
+.qitem .nm{font-size:12.5px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.qitem .st{font-size:11px; color:var(--muted); display:flex; align-items:center; gap:5px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.status-dot.done{background:var(--good)} .status-dot.error{background:var(--rust)}
+.status-dot.running{background:var(--amber); animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+
+/* ---------- Drop zone ---------- */
+.dropzone{
+  border:2px dashed #d9d0be; border-radius:var(--radius); background:#fdfbf7;
+  padding:26px 18px; text-align:center; transition:border-color .2s, background .2s;
+}
+.dropzone.hot{border-color:var(--amber); background:#FFFBEF}
+.paste-hero{
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  font-family:var(--font-head); font-weight:600; font-size:17px; margin-bottom:6px;
+}
+.paste-hero .keys{display:inline-flex; gap:4px}
+.key{
+  background:var(--ink); color:#fff; border-radius:7px; padding:3px 9px;
+  font-size:13px; font-weight:600; box-shadow:0 2px 0 #000;
+}
+.dz-sub{color:var(--muted); font-size:12.5px; margin:0 0 14px}
+.dz-actions{display:flex; gap:9px; justify-content:center; flex-wrap:wrap}
+.dz-formats{margin-top:12px; font-size:11.5px; color:var(--muted)}
+
+/* ---------- Image stage ---------- */
+.stage{
+  position:relative; background:
+    linear-gradient(45deg,#f6f3ee 25%,transparent 25%) -10px 0/20px 20px,
+    linear-gradient(-45deg,#f6f3ee 25%,transparent 25%) -10px 0/20px 20px,
+    linear-gradient(45deg,transparent 75%,#f6f3ee 75%) 0 0/20px 20px,
+    linear-gradient(-45deg,transparent 75%,#f6f3ee 75%) 0 0/20px 20px, #fff;
+  border:1px solid var(--line-soft); border-radius:10px; overflow:auto; max-height:52vh; padding:10px;
+}
+.canvas-wrap{position:relative; margin:0 auto; width:100%; line-height:0}
+.canvas-wrap canvas{width:100%; height:auto; display:block; border-radius:4px}
+.crop-layer{position:absolute; inset:0; cursor:crosshair}
+.crop-box{position:absolute; border:2px solid var(--amber); background:rgba(245,179,1,.14); box-shadow:0 0 0 9999px rgba(14,14,16,.30); display:none}
+.tools{display:flex; flex-wrap:wrap; gap:7px; margin-top:12px; align-items:center}
+.tool-sep{width:1px; height:22px; background:var(--line); margin:0 3px}
+.toggle{display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; user-select:none; padding:6px 10px; border:1px solid var(--line); border-radius:9px; background:var(--card)}
+.toggle input{accent-color:var(--amber); width:15px; height:15px; margin:0}
+.toggle.on{background:#FFF7E0; border-color:var(--amber)}
+
+/* ---------- Controls ---------- */
+.field{display:flex; flex-direction:column; gap:5px; min-width:0}
+.field label{font-size:11.5px; font-weight:600; color:var(--muted); letter-spacing:.03em; text-transform:uppercase}
+select, .txtin{
+  width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:10px;
+  background:var(--card); cursor:pointer; transition:border-color .15s;
+}
+select:hover{border-color:#cfc5b1}
+select:focus,textarea:focus{outline:2px solid var(--amber); outline-offset:0; border-color:var(--amber)}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.hint{font-size:11.5px; color:var(--muted); margin:8px 0 0; display:flex; gap:6px; align-items:flex-start}
+
+/* ---------- Progress ---------- */
+.progress-wrap{margin-top:12px; display:none}
+.progress-wrap.show{display:block}
+.progress-top{display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px; color:var(--ink); font-weight:500}
+.bar{height:8px; background:#EFEAE0; border-radius:99px; overflow:hidden}
+.bar span{display:block; height:100%; width:0%; background:linear-gradient(90deg,var(--amber),#ffd257); border-radius:99px; transition:width .25s ease}
+
+/* ---------- Results ---------- */
+.result-top{display:flex; gap:16px; align-items:center; padding:14px 15px; border-bottom:1px solid var(--line-soft); flex-wrap:wrap}
+.ring{position:relative; width:76px; height:76px; flex:none}
+.ring svg{transform:rotate(-90deg)}
+.ring .val{position:absolute; inset:0; display:grid; place-items:center; text-align:center}
+.ring .val b{font-family:var(--font-head); font-size:17px; line-height:1}
+.ring .val small{font-size:9.5px; color:var(--muted); letter-spacing:.06em}
+.conf-note{font-size:12.5px; color:var(--muted); flex:1; min-width:160px}
+.conf-note strong{color:var(--ink); font-family:var(--font-head)}
+.counts{display:flex; gap:14px; font-size:12px; color:var(--muted)}
+.counts b{color:var(--ink); font-family:var(--font-head); font-weight:600}
+textarea{
+  width:100%; min-height:250px; resize:vertical; padding:14px;
+  border:1px solid var(--line); border-radius:10px; background:#FFFDF9;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; line-height:1.65;
+}
+.chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:12px}
+.cardfields{display:none; gap:8px; flex-direction:column; margin-bottom:12px}
+.cardfields.show{display:flex}
+.cf{display:flex; gap:10px; align-items:center; border:1px solid var(--line-soft); border-radius:10px; padding:9px 12px; background:#FCFAF6}
+.cf .lbl{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; width:74px; flex:none}
+.cf .vals{font-size:13px; word-break:break-all}
+
+/* ---------- Empty state ---------- */
+.empty{text-align:center; padding:44px 20px; color:var(--muted)}
+.empty svg{width:120px; height:120px; margin-bottom:14px}
+.empty h3{font-size:15px; color:var(--ink); margin-bottom:5px}
+.empty p{margin:0; font-size:13px; max-width:290px; margin-inline:auto}
+
+/* ---------- Toasts ---------- */
+#toasts{position:fixed; right:18px; bottom:18px; z-index:100; display:flex; flex-direction:column; gap:9px; align-items:flex-end}
+.toast{
+  background:var(--ink); color:#fff; padding:11px 15px; border-radius:11px;
+  box-shadow:var(--shadow-lift); font-size:13px; display:flex; gap:9px; align-items:center;
+  animation:slideIn .22s ease; max-width:330px;
+}
+.toast.ok{background:#12352A; border-left:3px solid var(--good)}
+.toast.err{background:#3A1710; border-left:3px solid var(--rust)}
+.toast.fade{opacity:0; transform:translateY(6px); transition:.3s}
+@keyframes slideIn{from{opacity:0; transform:translateY(10px)}}
+
+/* ---------- Environment warning ---------- */
+.env-warn{display:none; margin:16px 22px 0; padding:14px 18px; background:#FFF3E9; border:1px solid #F3C4AE; border-left:4px solid var(--rust); border-radius:var(--radius)}
+.env-warn.show{display:block}
+.env-warn h3{font-size:14px; margin-bottom:6px; color:var(--rust)}
+.env-warn p{margin:0 0 8px; font-size:13px; max-width:75ch}
+.env-warn ol{margin:0; padding-left:20px; font-size:13px}
+.env-warn li{margin-bottom:4px}
+.env-warn code{background:#fff; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:12.5px}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1180px){
+  .app{grid-template-columns:1fr 1fr}
+  .sidebar{grid-column:1 / -1}
+  .queue{max-height:none; display:flex; gap:8px; overflow-x:auto}
+  .qitem{width:auto; min-width:180px}
+}
+@media (max-width:820px){
+  .app{grid-template-columns:1fr; padding:14px}
+  header{padding:12px 14px}
+  .header-right{width:100%; margin-left:0}
+  .stage{max-height:44vh}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important; transition-duration:.01ms !important}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#F5B301" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/>
+        <path d="M7 9h10M7 13h7"/>
+      </svg>
+    </div>
+    <div>
+      <h1>SnapText</h1>
+      <p>Image to Text Extractor</p>
+    </div>
+  </div>
+
+  <div class="privacy"><span class="dot"></span>🔒 Processed on your device. Nothing is uploaded.</div>
+
+  <div class="header-right">
+    <button class="btn small" id="btnCopyAll">Copy all results</button>
+    <button class="btn small" id="btnZip">Download all as .zip</button>
+    <button class="btn small danger" id="btnClearAll">Clear session</button>
+  </div>
+</header>
+
+<div id="envWarning" class="env-warn"></div>
+
+<main class="app">
+
+  <!-- ==================== LEFT: session queue ==================== -->
+  <section class="card pane sidebar">
+    <div class="pane-head">
+      <h2>Queue</h2>
+      <span class="spacer"></span>
+      <button class="btn small" id="btnExtractAll" title="Run OCR on every image that hasn't been read yet">Extract all</button>
+    </div>
+    <div class="queue" id="queue">
+      <div class="queue-empty">Nothing added yet.<br>Paste a screenshot to begin.</div>
+    </div>
+  </section>
+
+  <!-- ==================== MIDDLE: image + preparation ==================== -->
+  <section class="card pane">
+    <div class="pane-head"><h2>Image</h2><span class="spacer"></span><span id="imgDims" style="font-size:11.5px;color:var(--muted)"></span></div>
+    <div class="pane-body">
+
+      <!-- Drop zone: paste is deliberately the loudest option -->
+      <div class="dropzone" id="dropzone">
+        <div class="paste-hero">
+          <span class="keys"><span class="key">Ctrl</span><span class="key">V</span></span>
+          <span>Paste a screenshot</span>
+        </div>
+        <p class="dz-sub">Fastest way in — copy any screenshot, then paste it right here.</p>
+        <div class="dz-actions">
+          <button class="btn" id="btnBrowse">Browse files</button>
+          <span style="align-self:center; color:var(--muted); font-size:12.5px">or drag a file onto this box</span>
+        </div>
+        <div class="dz-formats">JPG · PNG · WEBP · BMP · PDF (every page is queued separately)</div>
+        <input type="file" id="filePicker" hidden multiple accept="image/*,application/pdf">
+      </div>
+
+      <!-- Live preview + preparation tools (hidden until an image exists) -->
+      <div id="editor" style="display:none">
+        <div class="stage" id="stage">
+          <div class="canvas-wrap" id="canvasWrap">
+            <canvas id="preview"></canvas>
+            <div class="crop-layer" id="cropLayer"><div class="crop-box" id="cropBox"></div></div>
+          </div>
+        </div>
+
+        <div class="tools">
+          <button class="btn small" id="btnRotL" title="Rotate left">↺ Rotate left</button>
+          <button class="btn small" id="btnRotR" title="Rotate right">↻ Rotate right</button>
+          <span class="tool-sep"></span>
+          <button class="btn small" id="btnZoomOut">− Zoom</button>
+          <span id="zoomLabel" style="font-size:12px;color:var(--muted);min-width:42px;text-align:center">100%</span>
+          <button class="btn small" id="btnZoomIn">+ Zoom</button>
+          <span class="tool-sep"></span>
+          <label class="toggle" id="enhanceToggle"><input type="checkbox" id="chkEnhance"> Enhance for OCR</label>
+          <button class="btn small" id="btnClearCrop" style="display:none">Clear selection</button>
+          <span class="tool-sep"></span>
+          <button class="btn small danger" id="btnReset">Reset image</button>
+        </div>
+        <p class="hint" id="cropHint">Drag a box on the image to read only that region. Rotate until the text sits horizontal — crooked scans are the number one cause of bad results.</p>
+
+        <div class="grid2" style="margin-top:14px">
+          <div class="field">
+            <label for="lang1">Language</label>
+            <select id="lang1"></select>
+          </div>
+          <div class="field">
+            <label for="lang2">Second language (optional)</label>
+            <select id="lang2"></select>
+          </div>
+        </div>
+        <p class="hint">Each new language downloads its training file once (a few MB), then it's cached for the rest of the session.</p>
+
+        <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap">
+          <button class="btn primary" id="btnExtract" style="flex:1; min-width:190px; padding:12px 16px">Extract text <span class="kbd">Ctrl ↵</span></button>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-top"><span id="progressLabel">Starting…</span><span id="progressPct">0%</span></div>
+          <div class="bar"><span id="progressBar"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== RIGHT: results ==================== -->
+  <section class="card pane">
+    <div class="pane-head">
+      <h2>Extracted text</h2>
+      <span class="spacer"></span>
+      <div class="counts"><span><b id="wordCount">0</b> words</span><span><b id="charCount">0</b> chars</span></div>
+    </div>
+
+    <div class="result-top" id="resultTop" style="display:none">
+      <div class="ring">
+        <svg width="76" height="76">
+          <circle cx="38" cy="38" r="31" fill="none" stroke="#EFEAE0" stroke-width="8"></circle>
+          <circle id="ringArc" cx="38" cy="38" r="31" fill="none" stroke="#1FA971" stroke-width="8"
+                  stroke-linecap="round" stroke-dasharray="195" stroke-dashoffset="195"
+                  style="transition:stroke-dashoffset .6s ease, stroke .3s ease"></circle>
+        </svg>
+        <div class="val"><div><b id="confVal">–</b><br><small>CONFIDENCE</small></div></div>
+      </div>
+      <div class="conf-note" id="confNote"></div>
+    </div>
+
+    <div class="pane-body" style="padding-top:14px">
+      <div class="grid2">
+        <div class="field">
+          <label for="mode">Extract mode</label>
+          <select id="mode">
+            <option value="plain">Plain text</option>
+            <option value="table">Table mode → CSV</option>
+            <option value="card">Visiting card mode</option>
+            <option value="numbers">Numbers only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="linemode">Line handling</label>
+          <select id="linemode">
+            <option value="keep">Preserve line breaks</option>
+            <option value="merge">Merge into paragraphs</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="cardfields" id="cardFields" style="margin-top:14px"></div>
+
+      <div id="resultEmpty" class="empty">
+        <!-- Friendly illustrated empty state -->
+        <svg viewBox="0 0 200 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="26" y="24" width="104" height="112" rx="10" fill="#fff" stroke="#E7E0D3" stroke-width="3"/>
+          <rect x="44" y="46" width="68" height="7" rx="3.5" fill="#F0EAE0"/>
+          <rect x="44" y="62" width="52" height="7" rx="3.5" fill="#F0EAE0"/>
+          <rect x="44" y="78" width="62" height="7" rx="3.5" fill="#F0EAE0"/>
+          <rect x="44" y="94" width="34" height="7" rx="3.5" fill="#F0EAE0"/>
+          <circle cx="132" cy="98" r="34" fill="#FFF7E0" stroke="#F5B301" stroke-width="3"/>
+          <path d="M120 98l8 8 18-18" stroke="#F5B301" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M150 40l4 10 10 4-10 4-4 10-4-10-10-4 10-4 4-10z" fill="#F5B301"/>
+        </svg>
+        <h3>Your text lands here</h3>
+        <p>Add an image, then press Extract text. You can edit everything afterwards — OCR is never perfect.</p>
+      </div>
+
+      <div id="resultBox" style="display:none; margin-top:14px">
+        <textarea id="output" spellcheck="false" placeholder="Extracted text appears here…"></textarea>
+        <div class="chips">
+          <button class="btn small primary" id="btnCopy">Copy to clipboard <span class="kbd">Ctrl C</span></button>
+          <button class="btn small" id="btnTxt">Download .txt</button>
+          <button class="btn small" id="btnCsv" style="display:none">Download .csv</button>
+          <button class="btn small" id="btnClean">Clean up text</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toasts"></div>
+
+<script>
+/* =====================================================================
+   SnapText — all logic lives in this one script block.
+   Everything below runs inside your browser. No image ever leaves it.
+   The code is grouped into clearly labelled sections so you can find
+   the bit you want to change without reading the whole thing.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------
+   SECTION 1 — SETTINGS YOU MIGHT WANT TO CHANGE
+   --------------------------------------------------------------- */
+
+// The language shown when the app opens. Use a code from the list below.
+const DEFAULT_LANGUAGE = 'eng';
+
+// Every language the dropdowns offer. Add a line here to offer more.
+const LANGUAGES = [
+  {code:'eng', name:'English'},
+  {code:'hin', name:'Hindi (हिन्दी)'},
+  {code:'mar', name:'Marathi (मराठी)'},
+  {code:'guj', name:'Gujarati (ગુજરાતી)'},
+  {code:'tam', name:'Tamil (தமிழ்)'},
+  {code:'tel', name:'Telugu (తెలుగు)'},
+  {code:'ben', name:'Bengali (বাংলা)'},
+  {code:'kan', name:'Kannada (ಕನ್ನಡ)'},
+  {code:'ara', name:'Arabic (العربية)'},
+  {code:'spa', name:'Spanish'},
+  {code:'fra', name:'French'},
+  {code:'deu', name:'German'},
+  {code:'chi_sim', name:'Chinese (Simplified)'}
+];
+
+// Tell pdf.js where its own background worker file lives.
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+}
+
+/* ---------------------------------------------------------------
+   SECTION 2 — SHORTHAND HELPERS
+   --------------------------------------------------------------- */
+
+// $ finds one element by its id. Saves typing document.getElementById everywhere.
+const $ = id => document.getElementById(id);
+
+// Shows a small message in the bottom-right corner that disappears after 3 seconds.
+function toast(message, kind){
+  const el = document.createElement('div');
+  el.className = 'toast ' + (kind || '');
+  el.textContent = message;
+  $('toasts').appendChild(el);
+  setTimeout(() => { el.classList.add('fade'); setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+// Turns any text into a file the browser downloads.
+function downloadFile(filename, content, mimeType){
+  const blob = content instanceof Blob ? content : new Blob([content], {type: mimeType || 'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// Makes a filename safe (no slashes, no weird characters).
+function safeName(name){
+  return String(name).replace(/[^\w\-. ]+/g, '_').slice(0, 70) || 'snaptext';
+}
+
+/* ---------------------------------------------------------------
+   SECTION 3 — THE APP'S MEMORY (state)
+   Every image the user adds becomes one "job" object in this list.
+   --------------------------------------------------------------- */
+
+const state = {
+  jobs: [],            // all images added this session
+  activeId: null,      // which job is currently on screen
+  zoom: 1,             // preview zoom level
+  busy: false,         // true while OCR is running, so we can disable buttons
+  engineLoadedOnce: false  // used for the one-time "downloading engine" message
+};
+
+let jobCounter = 0;
+
+// A plain grey square used if a thumbnail can't be generated.
+const BLANK_THUMB = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="84" height="84"><rect width="84" height="84" fill="#F0EAE0"/><path d="M22 56l14-16 10 11 8-8 8 13z" fill="#cfc5b1"/></svg>');
+
+// Creates one job from a canvas (an image already drawn into memory).
+function createJob(canvas, name){
+  jobCounter++;
+  const job = {
+    id: 'job' + jobCounter,
+    name: name,
+    source: canvas,     // the untouched original pixels
+    rotation: 0,        // 0, 90, 180 or 270 degrees
+    crop: null,         // {x,y,w,h} as fractions 0–1 of the rotated image
+    enhance: false,     // is the black & white clean-up switched on?
+    status: 'queued',   // queued / running / done / error
+    raw: null,          // whatever Tesseract gave back
+    confidence: 0,
+    text: '',           // the editable text the user sees
+    mode: 'plain',
+    linemode: 'keep',
+    thumb: ''           // small picture for the sidebar
+  };
+  // Build a little thumbnail for the sidebar list.
+  const t = document.createElement('canvas');
+  t.width = 84; t.height = 84;
+  const tctx = t.getContext('2d');
+  tctx.fillStyle = '#fff'; tctx.fillRect(0,0,84,84);
+  const scale = Math.min(84 / canvas.width, 84 / canvas.height);
+  const w = canvas.width * scale, h = canvas.height * scale;
+  tctx.drawImage(canvas, (84-w)/2, (84-h)/2, w, h);
+  // If the browser ever refuses to export the canvas, carry on without a
+  // thumbnail rather than letting the whole upload fail.
+  try { job.thumb = t.toDataURL('image/jpeg', 0.7); }
+  catch (err){ console.warn('Thumbnail skipped:', err); job.thumb = BLANK_THUMB; }
+
+  state.jobs.push(job);
+  return job;
+}
+
+function activeJob(){
+  return state.jobs.find(j => j.id === state.activeId) || null;
+}
+
+/* ---------------------------------------------------------------
+   SECTION 4 — GETTING IMAGES IN
+   Three routes: paste, drag-and-drop, and the file picker.
+   PDFs take a detour through pdf.js first.
+   --------------------------------------------------------------- */
+
+// Handles a list of files from any of the three routes.
+async function handleFiles(fileList){
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+
+  for (const file of files){
+    try {
+      // Anything that isn't a PDF is simply tried as a picture. Some pasted
+      // and downloaded files arrive with a blank type, so guessing from the
+      // file name alone used to reject perfectly good images.
+      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)){
+        await addPdf(file);
+      } else {
+        await addImage(file);
+      }
+    } catch (err){
+      console.error(err);
+      const reason = err && err.message ? ' — ' + err.message : '';
+      toast('Couldn\u2019t open ' + (file.name || 'that file') + reason, 'err');
+    }
+  }
+  renderQueue();
+}
+
+// Loads a normal image file and draws it onto a canvas we can edit.
+//
+// IMPORTANT: this deliberately does NOT use URL.createObjectURL. When the page
+// is opened straight from your desktop (a file:// address), Chrome treats a
+// picture loaded through a blob link as coming from somewhere else, and then
+// blocks every attempt to read the canvas back — the thumbnail, the Enhance
+// filter, and the OCR itself all fail with a security error. Decoding the file
+// directly keeps the canvas readable, so everything downstream works.
+async function addImage(file){
+  const picture = await decodeImageFile(file);
+  const width = picture.naturalWidth || picture.width;
+  const height = picture.naturalHeight || picture.height;
+
+  if (!width || !height) throw new Error('The image has no readable size.');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext('2d').drawImage(picture, 0, 0);
+  if (picture.close) picture.close(); // free the decoded bitmap
+
+  const job = createJob(canvas, file.name || 'pasted-image.png');
+  selectJob(job.id);
+  toast('Added ' + job.name, 'ok');
+  return job;
+}
+
+// Turns a file into something we can draw. First choice is createImageBitmap,
+// which decodes the file itself and is always safe to read back. If the browser
+// doesn't have it, we fall back to a data: URL, which is equally safe.
+function decodeImageFile(file){
+  if (window.createImageBitmap){
+    return createImageBitmap(file).catch(() => decodeViaDataUrl(file));
+  }
+  return decodeViaDataUrl(file);
+}
+
+function decodeViaDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('The file couldn\u2019t be read from disk.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('That doesn\u2019t look like an image Chrome can open.'));
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Opens a PDF and turns each page into its own image job.
+async function addPdf(file){
+  if (!window.pdfjsLib) { toast('PDF support needs an internet connection.', 'err'); return; }
+  toast('Opening PDF…');
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: buffer}).promise;
+  const baseName = (file.name || 'document.pdf').replace(/\.pdf$/i, '');
+
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++){
+    const page = await pdf.getPage(pageNo);
+    // Scale 2 renders the page at roughly 150 DPI, which OCR likes.
+    const viewport = page.getViewport({scale: 2});
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({canvasContext: canvas.getContext('2d'), viewport: viewport}).promise;
+    const job = createJob(canvas, baseName + ' — page ' + pageNo);
+    if (pageNo === 1) selectJob(job.id);
+  }
+  toast('Queued ' + pdf.numPages + ' page(s) from the PDF', 'ok');
+}
+
+// Paste: the highlighted route. Works anywhere on the page.
+document.addEventListener('paste', e => {
+  const items = (e.clipboardData && e.clipboardData.items) || [];
+  const files = [];
+  for (const item of items){
+    if (item.kind === 'file'){
+      const f = item.getAsFile();
+      if (f) files.push(f);
+    }
+  }
+  if (files.length){
+    e.preventDefault();
+    handleFiles(files);
+  }
+});
+
+// Drag and drop, both onto the box and anywhere on the window.
+const dropzone = $('dropzone');
+['dragenter','dragover'].forEach(evt => {
+  window.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('hot'); });
+});
+['dragleave','drop'].forEach(evt => {
+  window.addEventListener(evt, e => { e.preventDefault(); if (evt === 'drop' || e.target === document.documentElement) dropzone.classList.remove('hot'); });
+});
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('hot');
+  if (e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+
+// The Browse button opens the normal file picker.
+$('btnBrowse').addEventListener('click', () => $('filePicker').click());
+$('filePicker').addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+
+/* ---------------------------------------------------------------
+   SECTION 5 — PREPARING THE IMAGE
+   Rotation, the enhance filter, cropping and zoom all happen here.
+   --------------------------------------------------------------- */
+
+// Returns a new canvas rotated by the job's rotation setting.
+function rotatedCanvas(job){
+  const src = job.source;
+  const deg = ((job.rotation % 360) + 360) % 360;
+  if (deg === 0) return src;
+
+  const out = document.createElement('canvas');
+  const swap = (deg === 90 || deg === 270);
+  out.width  = swap ? src.height : src.width;
+  out.height = swap ? src.width  : src.height;
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width / 2, out.height / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.drawImage(src, -src.width / 2, -src.height / 2);
+  return out;
+}
+
+// Turns a colour image into clean black-on-white, which OCR reads far better.
+// Step 1: convert to grey. Step 2: push the contrast. Step 3: pick the best
+// black/white cut-off automatically (Otsu's method) and flatten everything to
+// pure black or pure white.
+function enhanceCanvas(canvas){
+  const out = document.createElement('canvas');
+  out.width = canvas.width; out.height = canvas.height;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(canvas, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, out.width, out.height);
+  const px = imageData.data;
+  const histogram = new Array(256).fill(0);
+  const contrast = 1.35; // how hard we push the contrast
+
+  for (let i = 0; i < px.length; i += 4){
+    let grey = 0.299 * px[i] + 0.587 * px[i+1] + 0.114 * px[i+2];
+    grey = (grey - 128) * contrast + 128;
+    grey = grey < 0 ? 0 : (grey > 255 ? 255 : grey);
+    grey = grey | 0;
+    px[i] = px[i+1] = px[i+2] = grey;
+    histogram[grey]++;
+  }
+
+  // Otsu's method: find the grey value that best separates ink from paper.
+  const total = out.width * out.height;
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * histogram[i];
+  let sumB = 0, wB = 0, best = 0, threshold = 128;
+  for (let i = 0; i < 256; i++){
+    wB += histogram[i];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += i * histogram[i];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > best){ best = between; threshold = i; }
+  }
+
+  for (let i = 0; i < px.length; i += 4){
+    const v = px[i] > threshold ? 255 : 0;
+    px[i] = px[i+1] = px[i+2] = v;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return out;
+}
+
+// Builds the canvas we actually hand to the OCR engine:
+// rotate → crop to the selected box → optionally enhance.
+function canvasForOCR(job){
+  let canvas = rotatedCanvas(job);
+
+  if (job.crop){
+    const c = job.crop;
+    const x = Math.round(c.x * canvas.width);
+    const y = Math.round(c.y * canvas.height);
+    const w = Math.max(8, Math.round(c.w * canvas.width));
+    const h = Math.max(8, Math.round(c.h * canvas.height));
+    const cropped = document.createElement('canvas');
+    cropped.width = w; cropped.height = h;
+    cropped.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, w, h);
+    canvas = cropped;
+  }
+
+  // Very small crops get scaled up — OCR struggles below about 300px tall.
+  if (canvas.height < 300 && canvas.height > 0){
+    const factor = Math.min(4, 300 / canvas.height);
+    const big = document.createElement('canvas');
+    big.width = Math.round(canvas.width * factor);
+    big.height = Math.round(canvas.height * factor);
+    const bctx = big.getContext('2d');
+    bctx.imageSmoothingQuality = 'high';
+    bctx.drawImage(canvas, 0, 0, big.width, big.height);
+    canvas = big;
+  }
+
+  return job.enhance ? enhanceCanvas(canvas) : canvas;
+}
+
+// Redraws the big preview in the middle column.
+function renderPreview(){
+  const job = activeJob();
+  const editor = $('editor');
+  if (!job){ editor.style.display = 'none'; $('imgDims').textContent = ''; return; }
+  editor.style.display = 'block';
+
+  let canvas = rotatedCanvas(job);
+  if (job.enhance) canvas = enhanceCanvas(canvas);
+
+  const preview = $('preview');
+  preview.width = canvas.width;
+  preview.height = canvas.height;
+  preview.getContext('2d').drawImage(canvas, 0, 0);
+
+  $('canvasWrap').style.width = (state.zoom * 100) + '%';
+  $('zoomLabel').textContent = Math.round(state.zoom * 100) + '%';
+  $('imgDims').textContent = canvas.width + ' × ' + canvas.height + ' px';
+  $('chkEnhance').checked = job.enhance;
+  $('enhanceToggle').classList.toggle('on', job.enhance);
+  drawCropBox();
+}
+
+// Draws the amber selection rectangle over the preview.
+function drawCropBox(){
+  const job = activeJob();
+  const box = $('cropBox');
+  if (!job || !job.crop){ box.style.display = 'none'; $('btnClearCrop').style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.style.left   = (job.crop.x * 100) + '%';
+  box.style.top    = (job.crop.y * 100) + '%';
+  box.style.width  = (job.crop.w * 100) + '%';
+  box.style.height = (job.crop.h * 100) + '%';
+  $('btnClearCrop').style.display = 'inline-flex';
+}
+
+// Dragging a selection box with the mouse or a finger.
+(function setupCropDragging(){
+  const layer = $('cropLayer');
+  let dragging = false, startX = 0, startY = 0;
+
+  const pointFrom = e => {
+    const rect = layer.getBoundingClientRect();
+    const point = e.touches ? e.touches[0] : e;
+    return {
+      x: Math.min(1, Math.max(0, (point.clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (point.clientY - rect.top) / rect.height))
+    };
+  };
+
+  const begin = e => {
+    if (!activeJob()) return;
+    dragging = true;
+    const p = pointFrom(e);
+    startX = p.x; startY = p.y;
+    e.preventDefault();
+  };
+  const move = e => {
+    if (!dragging) return;
+    const p = pointFrom(e);
+    const job = activeJob();
+    job.crop = {
+      x: Math.min(startX, p.x), y: Math.min(startY, p.y),
+      w: Math.abs(p.x - startX), h: Math.abs(p.y - startY)
+    };
+    drawCropBox();
+    e.preventDefault();
+  };
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    const job = activeJob();
+    // A tiny accidental drag counts as "no selection".
+    if (job && job.crop && (job.crop.w < 0.02 || job.crop.h < 0.02)) job.crop = null;
+    drawCropBox();
+  };
+
+  layer.addEventListener('mousedown', begin);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  layer.addEventListener('touchstart', begin, {passive:false});
+  window.addEventListener('touchmove', move, {passive:false});
+  window.addEventListener('touchend', end);
+})();
+
+// The preparation toolbar buttons.
+$('btnRotL').addEventListener('click', () => { const j = activeJob(); if (!j) return; j.rotation -= 90; j.crop = null; renderPreview(); });
+$('btnRotR').addEventListener('click', () => { const j = activeJob(); if (!j) return; j.rotation += 90; j.crop = null; renderPreview(); });
+$('btnZoomIn').addEventListener('click', () => { state.zoom = Math.min(3, state.zoom + 0.25); renderPreview(); });
+$('btnZoomOut').addEventListener('click', () => { state.zoom = Math.max(0.5, state.zoom - 0.25); renderPreview(); });
+$('chkEnhance').addEventListener('change', e => { const j = activeJob(); if (!j) return; j.enhance = e.target.checked; renderPreview(); });
+$('btnClearCrop').addEventListener('click', () => { const j = activeJob(); if (!j) return; j.crop = null; drawCropBox(); });
+$('btnReset').addEventListener('click', () => {
+  const j = activeJob(); if (!j) return;
+  j.rotation = 0; j.crop = null; j.enhance = false; state.zoom = 1;
+  renderPreview(); toast('Image reset');
+});
+
+/* ---------------------------------------------------------------
+   SECTION 6 — THE OCR ENGINE
+   Tesseract workers are expensive to start, so we keep one per
+   language combination and reuse it for the rest of the session.
+   --------------------------------------------------------------- */
+
+const workers = {};        // e.g. { 'eng': worker, 'eng+hin': worker }
+let progressHandler = null; // whichever function should receive progress right now
+
+// Friendly wording for the technical stage names Tesseract reports.
+const STAGE_TEXT = {
+  'loading tesseract core': 'Loading OCR engine (one-time, ~5 MB)…',
+  'initializing tesseract': 'Starting the engine…',
+  'loading language traineddata': 'Downloading language file (one-time)…',
+  'initializing api': 'Getting ready…',
+  'recognizing text': 'Reading the text…'
+};
+
+// Gets (or creates) a worker for the chosen language string.
+async function getWorker(langKey){
+  if (workers[langKey]) return workers[langKey];
+  const worker = await Tesseract.createWorker(langKey, 1, {
+    logger: m => { if (progressHandler) progressHandler(m); }
+  });
+  workers[langKey] = worker;
+  state.engineLoadedOnce = true;
+  return worker;
+}
+
+// Shows or hides the progress bar and moves it along.
+function setProgress(show, label, percent){
+  const wrap = $('progressWrap');
+  wrap.classList.toggle('show', !!show);
+  if (label !== undefined) $('progressLabel').textContent = label;
+  if (percent !== undefined){
+    $('progressBar').style.width = percent + '%';
+    $('progressPct').textContent = Math.round(percent) + '%';
+  }
+}
+
+// The main event: read the text out of one job.
+async function extractJob(job){
+  if (state.ocrBlocked){
+    toast('OCR can\u2019t start here — see the orange note at the top of the page.', 'err');
+    return;
+  }
+  if (state.busy){ toast('Already reading an image — one moment.'); return; }
+  if (!window.Tesseract){ toast('OCR engine didn\u2019t load. Check your internet, then reload.', 'err'); return; }
+
+  const langKey = currentLanguageKey();
+  state.busy = true;
+  job.status = 'running';
+  renderQueue();
+  setBusyUI(true);
+
+  const firstRun = !state.engineLoadedOnce;
+  setProgress(true, firstRun ? STAGE_TEXT['loading tesseract core'] : 'Getting ready…', 2);
+
+  // This function receives every progress update from Tesseract.
+  progressHandler = m => {
+    const label = STAGE_TEXT[m.status] || (m.status.charAt(0).toUpperCase() + m.status.slice(1) + '…');
+    const pct = Math.max(2, Math.round((m.progress || 0) * 100));
+    setProgress(true, label, pct);
+  };
+
+  try {
+    const worker = await getWorker(langKey);
+    const canvas = canvasForOCR(job);
+
+    // Ask for the plain text AND the word boxes — Table mode needs the boxes.
+    const result = await worker.recognize(canvas, {}, {text: true, blocks: true});
+    const data = result.data || {};
+
+    job.raw = data;
+    job.confidence = typeof data.confidence === 'number' ? data.confidence : averageWordConfidence(data);
+    job.status = 'done';
+
+    const rawText = (data.text || '').trim();
+    if (!rawText){
+      job.text = '';
+      toast('No text found in that image. Try the Enhance toggle or a tighter crop.', 'err');
+    } else {
+      toast('Text extracted from ' + job.name, 'ok');
+    }
+    applyMode(job);         // build the visible text for the chosen mode
+    setProgress(true, 'Done', 100);
+    setTimeout(() => setProgress(false), 700);
+  } catch (err){
+    console.error(err);
+    job.status = 'error';
+    setProgress(false);
+    toast('Couldn\u2019t read that image. If this is the first run, check your internet connection.', 'err');
+  } finally {
+    progressHandler = null;
+    state.busy = false;
+    setBusyUI(false);
+    renderQueue();
+    renderResults();
+  }
+}
+
+// If Tesseract didn't give an overall score, work it out from the words.
+function averageWordConfidence(data){
+  const words = collectWords(data);
+  if (!words.length) return 0;
+  const total = words.reduce((sum, w) => sum + (w.confidence || 0), 0);
+  return total / words.length;
+}
+
+// Runs OCR on every job that hasn't been read yet, one after another.
+async function extractAll(){
+  const pending = state.jobs.filter(j => j.status === 'queued' || j.status === 'error');
+  if (!pending.length){ toast('Everything in the queue is already extracted.'); return; }
+  for (const job of pending){
+    selectJob(job.id);
+    await extractJob(job);
+  }
+  toast('Finished the whole queue', 'ok');
+}
+
+// Greys out the buttons while OCR is running so nothing gets clicked twice.
+function setBusyUI(busy){
+  ['btnExtract','btnExtractAll','btnReset','btnRotL','btnRotR','btnClean'].forEach(id => {
+    const el = $(id); if (el) el.disabled = busy;
+  });
+  $('btnExtract').textContent = busy ? 'Reading…' : 'Extract text';
+  if (!busy){
+    $('btnExtract').innerHTML = 'Extract text <span class="kbd">Ctrl \u21B5</span>';
+  }
+  // If the page can't run OCR at all, keep the extract buttons switched off.
+  if (state.ocrBlocked){
+    $('btnExtract').disabled = true;
+    $('btnExtractAll').disabled = true;
+    $('btnExtract').textContent = 'Extract text (needs a web address)';
+  }
+}
+
+/* ---------------------------------------------------------------
+   SECTION 7 — SMART EXTRACT MODES
+   These reshape the raw OCR output into something more useful.
+   --------------------------------------------------------------- */
+
+// Pulls every recognised word (with its position) out of the OCR result.
+function collectWords(data){
+  const words = [];
+  const blocks = (data && data.blocks) || [];
+  blocks.forEach(block => (block.paragraphs || []).forEach(par => (par.lines || []).forEach(line => {
+    (line.words || []).forEach(w => {
+      if (w && w.text) words.push({text: w.text, bbox: w.bbox, confidence: w.confidence, line: line});
+    });
+  })));
+  return words;
+}
+
+// Groups the recognised words back into visual lines.
+function collectLines(data){
+  const lines = [];
+  const blocks = (data && data.blocks) || [];
+  blocks.forEach(block => (block.paragraphs || []).forEach(par => (par.lines || []).forEach(line => {
+    const words = (line.words || []).filter(w => w.text && w.text.trim())
+      .map(w => ({text: w.text, x0: w.bbox.x0, x1: w.bbox.x1}));
+    if (words.length) lines.push(words);
+  })));
+  return lines;
+}
+
+// Wraps a value so it is safe inside a CSV file.
+function csvCell(value){
+  const v = String(value == null ? '' : value);
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+
+// TABLE MODE — looks at the gaps between words on each line. A gap much
+// wider than a normal space means a new column starts there.
+function toTable(job){
+  const lines = collectLines(job.raw);
+
+  if (!lines.length){
+    // Fallback for when position data isn't available: two or more spaces
+    // in the plain text usually means a column break.
+    return (job.raw && job.raw.text || '').split('\n')
+      .filter(l => l.trim())
+      .map(l => l.trim().split(/\s{2,}/).map(csvCell).join(','))
+      .join('\n');
+  }
+
+  // Estimate the width of one character so we know what a "big gap" is.
+  let totalWidth = 0, totalChars = 0;
+  lines.forEach(words => words.forEach(w => { totalWidth += (w.x1 - w.x0); totalChars += w.text.length; }));
+  const charWidth = totalChars ? totalWidth / totalChars : 10;
+  const gapLimit = charWidth * 2.4;
+
+  const rows = lines.map(words => {
+    const cells = [];
+    let current = [words[0].text];
+    for (let i = 1; i < words.length; i++){
+      const gap = words[i].x0 - words[i-1].x1;
+      if (gap > gapLimit){ cells.push(current.join(' ')); current = [words[i].text]; }
+      else current.push(words[i].text);
+    }
+    cells.push(current.join(' '));
+    return cells;
+  });
+
+  // Pad every row to the same number of columns so Excel lines up neatly.
+  const widest = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  return rows.map(r => {
+    while (r.length < widest) r.push('');
+    return r.map(csvCell).join(',');
+  }).join('\n');
+}
+
+// VISITING CARD MODE — hunts for the details people actually want off a card.
+function findContactDetails(text){
+  const emails = text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
+
+  // Phone numbers: grab likely candidates, then keep those with 7–15 digits.
+  const phoneCandidates = text.match(/(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{2,5}\)[\s.-]?)?\d[\d\s.-]{5,16}\d/g) || [];
+  const phones = phoneCandidates
+    .map(p => p.trim())
+    .filter(p => { const digits = p.replace(/\D/g, '').length; return digits >= 7 && digits <= 15; });
+
+  const websites = (text.match(/(?:https?:\/\/|www\.)[^\s,;]+|\b[a-z0-9-]+\.(?:com|in|net|org|io|co|dev|ai|me)\b[^\s,;]*/gi) || [])
+    .filter(site => !site.includes('@'));
+
+  const unique = list => Array.from(new Set(list.map(s => s.trim()))).filter(Boolean);
+  return {emails: unique(emails), phones: unique(phones), websites: unique(websites)};
+}
+
+// NUMBERS ONLY — keeps figures, useful for invoices and bills.
+function toNumbers(text){
+  const matches = text.match(/-?\d{1,3}(?:,\d{2,3})+(?:\.\d+)?|-?\d+(?:\.\d+)?/g) || [];
+  return matches.join('\n');
+}
+
+// Applies the chosen mode and line handling, and puts the result on screen.
+function applyMode(job){
+  const raw = (job.raw && job.raw.text) || '';
+
+  if (job.mode === 'table'){
+    job.text = toTable(job);
+  } else if (job.mode === 'numbers'){
+    job.text = toNumbers(raw);
+  } else if (job.mode === 'card'){
+    const found = findContactDetails(raw);
+    job.contacts = found;
+    job.text = raw.trim();
+  } else {
+    job.text = job.linemode === 'merge' ? mergeParagraphs(raw) : raw.trim();
+  }
+}
+
+// Joins wrapped lines back into flowing paragraphs. A blank line still
+// means "new paragraph", so real structure survives.
+function mergeParagraphs(text){
+  return text.split(/\n\s*\n/)
+    .map(block => block.split('\n').map(l => l.trim()).filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+}
+
+// CLEAN UP — removes the usual OCR debris.
+function cleanText(text){
+  return text
+    .replace(/[|]{2,}/g, '')            // stray vertical bars from table borders
+    .replace(/[^\S\n]{2,}/g, ' ')       // runs of spaces become one space
+    .replace(/[ \t]+\n/g, '\n')         // trailing spaces at line ends
+    .replace(/\n{3,}/g, '\n\n')         // no more than one blank line in a row
+    .replace(/^[\s~`^_=+*·•—–-]{1,4}$/gm, '') // lines that are only junk marks
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/* ---------------------------------------------------------------
+   SECTION 8 — DRAWING THE SCREEN
+   --------------------------------------------------------------- */
+
+// The sidebar list of everything processed this session.
+function renderQueue(){
+  const box = $('queue');
+  if (!state.jobs.length){
+    box.innerHTML = '<div class="queue-empty">Nothing added yet.<br>Paste a screenshot to begin.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  state.jobs.forEach(job => {
+    const statusText = {queued:'Waiting', running:'Reading…', done:Math.round(job.confidence) + '% confidence', error:'Failed'}[job.status];
+    const item = document.createElement('button');
+    item.className = 'qitem' + (job.id === state.activeId ? ' active' : '');
+    item.innerHTML =
+      '<img src="' + job.thumb + '" alt="">' +
+      '<span class="meta">' +
+        '<span class="nm">' + job.name.replace(/</g,'&lt;') + '</span>' +
+        '<span class="st"><i class="status-dot ' + job.status + '"></i>' + statusText + '</span>' +
+      '</span>';
+    item.addEventListener('click', () => selectJob(job.id));
+    box.appendChild(item);
+  });
+}
+
+// Switches which image is on screen.
+function selectJob(id){
+  state.activeId = id;
+  state.zoom = 1;
+  const job = activeJob();
+  if (job){
+    $('mode').value = job.mode;
+    $('linemode').value = job.linemode;
+  }
+  renderQueue();
+  renderPreview();
+  renderResults();
+}
+
+// Fills the right-hand column: confidence ring, text and counts.
+function renderResults(){
+  const job = activeJob();
+  const hasText = job && job.status === 'done';
+
+  $('resultTop').style.display = hasText ? 'flex' : 'none';
+  $('resultBox').style.display = hasText ? 'block' : 'none';
+  $('resultEmpty').style.display = hasText ? 'none' : 'block';
+  $('btnCsv').style.display = (hasText && job.mode === 'table') ? 'inline-flex' : 'none';
+
+  const fields = $('cardFields');
+  fields.classList.remove('show');
+  fields.innerHTML = '';
+
+  if (!hasText){ updateCounts(''); return; }
+
+  $('output').value = job.text;
+  updateCounts(job.text);
+
+  // Confidence ring. Green above 85, amber 60–85, red below 60.
+  const score = Math.max(0, Math.min(100, Math.round(job.confidence)));
+  const colour = score >= 85 ? getComputedStyle(document.documentElement).getPropertyValue('--good').trim()
+               : score >= 60 ? getComputedStyle(document.documentElement).getPropertyValue('--warn').trim()
+               : getComputedStyle(document.documentElement).getPropertyValue('--rust').trim();
+  const circumference = 2 * Math.PI * 31;
+  $('ringArc').setAttribute('stroke', colour);
+  $('ringArc').setAttribute('stroke-dasharray', circumference.toFixed(1));
+  $('ringArc').setAttribute('stroke-dashoffset', (circumference * (1 - score / 100)).toFixed(1));
+  $('confVal').textContent = score + '%';
+
+  $('confNote').innerHTML =
+    score >= 85 ? '<strong>Looks clean.</strong> Skim it anyway — numbers and names are where OCR slips.'
+    : score >= 60 ? '<strong>Mostly readable.</strong> Check names, numbers and punctuation before you use it.'
+    : '<strong>Try the Enhance toggle, or rotate the image so the text is horizontal.</strong> A tighter crop around just the text also helps.';
+
+  // Visiting card mode shows the found details as separate labelled fields.
+  if (job.mode === 'card' && job.contacts){
+    const rows = [
+      ['Email', job.contacts.emails],
+      ['Phone', job.contacts.phones],
+      ['Website', job.contacts.websites]
+    ];
+    rows.forEach(([label, values]) => {
+      const row = document.createElement('div');
+      row.className = 'cf';
+      row.innerHTML = '<span class="lbl">' + label + '</span><span class="vals">' +
+        (values.length ? values.join('<br>').replace(/</g,'&lt;') : '<span style="color:var(--muted)">None found</span>') +
+        '</span>';
+      fields.appendChild(row);
+    });
+    fields.classList.add('show');
+  }
+}
+
+// Live word and character counts.
+function updateCounts(text){
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  $('wordCount').textContent = words.toLocaleString();
+  $('charCount').textContent = text.length.toLocaleString();
+}
+
+/* ---------------------------------------------------------------
+   SECTION 9 — LANGUAGE DROPDOWNS
+   --------------------------------------------------------------- */
+
+function buildLanguageDropdowns(){
+  const first = $('lang1'), second = $('lang2');
+  LANGUAGES.forEach(lang => {
+    first.appendChild(new Option(lang.name, lang.code));
+    second.appendChild(new Option(lang.name, lang.code));
+  });
+  second.insertBefore(new Option('None', ''), second.firstChild);
+  first.value = DEFAULT_LANGUAGE;
+  second.value = '';
+}
+
+// Turns the two dropdowns into the code Tesseract wants, e.g. "eng+hin".
+function currentLanguageKey(){
+  const a = $('lang1').value;
+  const b = $('lang2').value;
+  return (b && b !== a) ? a + '+' + b : a;
+}
+
+$('lang2').addEventListener('change', () => {
+  if ($('lang2').value) toast('Mixed-script mode on. The extra language downloads once.');
+});
+
+/* ---------------------------------------------------------------
+   SECTION 10 — EXPORTING
+   --------------------------------------------------------------- */
+
+// Copy with a fallback for browsers that block the clipboard API on file://
+async function copyText(text, message){
+  if (!text){ toast('Nothing to copy yet.', 'err'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(message || 'Copied to clipboard', 'ok');
+  } catch (err){
+    const helper = document.createElement('textarea');
+    helper.value = text;
+    helper.style.position = 'fixed'; helper.style.opacity = '0';
+    document.body.appendChild(helper); helper.select();
+    try { document.execCommand('copy'); toast(message || 'Copied to clipboard', 'ok'); }
+    catch (e2){ toast('Your browser blocked copying. Select the text and press Ctrl+C.', 'err'); }
+    helper.remove();
+  }
+}
+
+$('btnCopy').addEventListener('click', () => copyText($('output').value));
+
+$('btnTxt').addEventListener('click', () => {
+  const job = activeJob(); if (!job) return;
+  downloadFile(safeName(job.name) + '.txt', $('output').value);
+  toast('Downloaded .txt', 'ok');
+});
+
+$('btnCsv').addEventListener('click', () => {
+  const job = activeJob(); if (!job) return;
+  downloadFile(safeName(job.name) + '.csv', $('output').value, 'text/csv;charset=utf-8');
+  toast('Downloaded .csv', 'ok');
+});
+
+$('btnClean').addEventListener('click', () => {
+  const job = activeJob(); if (!job) return;
+  job.text = cleanText($('output').value);
+  $('output').value = job.text;
+  updateCounts(job.text);
+  toast('Cleaned up the text', 'ok');
+});
+
+// Every result in the session, joined with clear separators.
+function allResultsAsText(){
+  return state.jobs.filter(j => j.status === 'done' && j.text)
+    .map(j => '===== ' + j.name + ' =====\n' + j.text)
+    .join('\n\n');
+}
+
+$('btnCopyAll').addEventListener('click', () => {
+  const all = allResultsAsText();
+  if (!all){ toast('No results to copy yet.', 'err'); return; }
+  copyText(all, 'Copied every result');
+});
+
+// Bundle each result as its own file inside one .zip
+$('btnZip').addEventListener('click', async () => {
+  const done = state.jobs.filter(j => j.status === 'done' && j.text);
+  if (!done.length){ toast('Extract something first.', 'err'); return; }
+  if (!window.JSZip){ toast('The zip library didn\u2019t load. Check your internet.', 'err'); return; }
+
+  const zip = new JSZip();
+  const used = {};
+  done.forEach(job => {
+    let base = safeName(job.name).replace(/\.[a-z0-9]+$/i, '');
+    used[base] = (used[base] || 0) + 1;
+    if (used[base] > 1) base += '-' + used[base];
+    zip.file(base + (job.mode === 'table' ? '.csv' : '.txt'), job.text);
+  });
+  const blob = await zip.generateAsync({type:'blob'});
+  downloadFile('snaptext-results.zip', blob);
+  toast('Downloaded ' + done.length + ' file(s) as a zip', 'ok');
+});
+
+$('btnClearAll').addEventListener('click', () => {
+  if (!state.jobs.length) return;
+  if (!confirm('Clear every image and result from this session?')) return;
+  state.jobs = []; state.activeId = null;
+  renderQueue(); renderPreview(); renderResults();
+  toast('Session cleared');
+});
+
+/* ---------------------------------------------------------------
+   SECTION 11 — REMAINING CONTROLS + KEYBOARD SHORTCUTS
+   --------------------------------------------------------------- */
+
+$('btnExtract').addEventListener('click', () => {
+  const job = activeJob();
+  if (!job){ toast('Add an image first.', 'err'); return; }
+  extractJob(job);
+});
+
+$('btnExtractAll').addEventListener('click', extractAll);
+
+$('mode').addEventListener('change', e => {
+  const job = activeJob(); if (!job) return;
+  job.mode = e.target.value;
+  if (job.status === 'done'){ applyMode(job); renderResults(); }
+});
+
+$('linemode').addEventListener('change', e => {
+  const job = activeJob(); if (!job) return;
+  job.linemode = e.target.value;
+  if (job.status === 'done'){ applyMode(job); renderResults(); }
+});
+
+// Typing in the results box updates the counts and is remembered per image.
+$('output').addEventListener('input', e => {
+  const job = activeJob(); if (job) job.text = e.target.value;
+  updateCounts(e.target.value);
+});
+
+document.addEventListener('keydown', e => {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (!ctrl) return;
+
+  // Ctrl+Enter runs the extraction.
+  if (e.key === 'Enter'){
+    e.preventDefault();
+    const job = activeJob();
+    if (job) extractJob(job); else toast('Add an image first.', 'err');
+  }
+
+  // Ctrl+C copies the result — unless the user has text selected,
+  // in which case the normal browser copy should win.
+  if (e.key.toLowerCase() === 'c'){
+    const selection = String(window.getSelection());
+    const inTextarea = document.activeElement === $('output') && $('output').selectionStart !== $('output').selectionEnd;
+    if (!selection && !inTextarea && activeJob() && activeJob().status === 'done'){
+      e.preventDefault();
+      copyText($('output').value);
+    }
+  }
+});
+
+/* ---------------------------------------------------------------
+   SECTION 12 — START THE APP
+   --------------------------------------------------------------- */
+
+buildLanguageDropdowns();
+renderQueue();
+renderResults();
+
+/* The OCR engine does its work inside a Web Worker — a background thread that
+   keeps the page responsive while it reads. Some places refuse to start one:
+   a page opened straight from disk (file://) and most sandboxed preview frames.
+   Rather than fail with a confusing error halfway through, we test for it once
+   at startup and say plainly what to do about it. */
+function canStartWorker(){
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => { if (!settled){ settled = true; resolve(value); } };
+    try {
+      const blob = new Blob(['self.postMessage("ok")'], {type:'text/javascript'});
+      const url = URL.createObjectURL(blob);
+      const worker = new Worker(url);
+      worker.onmessage = () => { worker.terminate(); URL.revokeObjectURL(url); finish(true); };
+      worker.onerror   = () => { worker.terminate(); URL.revokeObjectURL(url); finish(false); };
+      setTimeout(() => finish(false), 2500);
+    } catch (err){
+      console.warn('Web Workers unavailable here:', err);
+      finish(false);
+    }
+  });
+}
+
+(async function checkEnvironment(){
+  if (await canStartWorker()) return; // all good, nothing to show
+
+  state.ocrBlocked = true;
+  const banner = $('envWarning');
+  const openedFromDisk = location.protocol === 'file:';
+
+  banner.innerHTML = openedFromDisk
+    ? '<h3>This page needs a web address, not a file path</h3>' +
+      '<p>Chrome blocks background workers on pages opened directly from disk, and the OCR engine runs inside one. ' +
+      'Images still load and the editing tools still work — only the reading step is switched off. ' +
+      'Serve the same file over a local address and everything runs, still entirely on your machine:</p>' +
+      '<ol>' +
+        '<li>Put <code>snaptext.html</code> in a folder on its own.</li>' +
+        '<li>Open Terminal or Command Prompt in that folder and run <code>python -m http.server 8000</code>.</li>' +
+        '<li>Visit <code>http://localhost:8000/snaptext.html</code> in Chrome.</li>' +
+      '</ol>' +
+      '<p style="margin-top:8px">To share it with others, upload this one file to any static host — GitHub Pages, Netlify Drop, Cloudflare Pages, or your own domain. ' +
+      'Only the page itself is hosted; images are still read on each person\u2019s own device and never sent anywhere.</p>'
+    : '<h3>This preview frame won\u2019t let the OCR engine start</h3>' +
+      '<p>The sandbox around this preview blocks background workers, and the text recognition runs inside one. ' +
+      'Download this file and open it from a real web address — a local server on your machine, or any static host such as GitHub Pages, Netlify Drop or your own domain — and extraction works normally. ' +
+      'Everything else on this page is fully functional here.</p>';
+
+  banner.classList.add('show');
+  setBusyUI(false); // applies the disabled state to the extract buttons
+})();
+
+// A gentle warning if the libraries couldn't load (usually means offline).
+window.addEventListener('load', () => {
+  if (!window.Tesseract){
+    toast('The OCR engine didn\u2019t load. Connect to the internet once, then reload this page.', 'err');
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,2690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoneyDesk — Personal Finance Workbench</title>
+
+<!-- ==== FONTS: Poppins for headings/UI, IBM Plex Mono for tabular figures ==== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- ==== CHART.JS v4 (CDN) ==== -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+/* =====================================================================
+   DESIGN TOKENS
+   To re-skin the whole app, edit ONLY the values in :root below.
+   ===================================================================== */
+:root{
+  --ink:#0E0E10;          /* charcoal — primary text */
+  --gold:#F5B301;         /* amber-gold — primary buttons, active nav */
+  --gold-soft:#FFF3D1;
+  --cream:#F4EDE2;        /* page background */
+  --rust:#E2582B;         /* over-budget / warning / danger */
+  --rust-soft:#FDE9E2;
+  --green:#1E8E52;        /* savings, surplus, good news */
+  --green-soft:#E3F4EA;
+  --card:#FFFFFF;
+  --muted:#6E6E76;
+  --line:#E7E1D6;
+  --shadow:0 1px 2px rgba(14,14,16,.04), 0 8px 24px rgba(14,14,16,.06);
+  --shadow-lg:0 12px 40px rgba(14,14,16,.14);
+  --r:12px;               /* 12px rounded corners everywhere */
+  --sans:'Poppins',system-ui,-apple-system,Segoe UI,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sidebar-w:250px;
+}
+[data-theme="dark"]{
+  --ink:#F2F0EC;
+  --cream:#141416;
+  --card:#1D1D20;
+  --muted:#9A9AA3;
+  --line:#2E2E33;
+  --gold-soft:#3A2F10;
+  --rust-soft:#3A211A;
+  --green-soft:#172E22;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  --shadow-lg:0 12px 40px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--sans);
+  background:var(--cream);
+  color:var(--ink);
+  font-size:14px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+h1,h2,h3,h4{font-family:var(--sans);font-weight:700;margin:0;letter-spacing:-.015em}
+h2{font-size:20px}
+h3{font-size:15px;font-weight:600}
+a{color:inherit}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+/* Every number in the app uses tabular figures so digit columns align */
+.num,td.num,input[type=number],.kpi-value,table td,table th{font-variant-numeric:tabular-nums}
+.num,.kpi-value,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ===================== LAYOUT ===================== */
+.app{display:flex;min-height:100vh}
+.sidebar{
+  width:var(--sidebar-w);flex:0 0 var(--sidebar-w);
+  background:var(--card);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:20px 14px;
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.brand{display:flex;gap:11px;align-items:center;padding:0 6px 18px}
+.logo{
+  width:38px;height:38px;flex:0 0 38px;border-radius:10px;background:var(--gold);
+  color:#0E0E10;display:grid;place-items:center;font-weight:800;font-size:19px;
+}
+.brand h1{font-size:16px;font-weight:700;line-height:1.1}
+.brand p{margin:2px 0 0;font-size:10.5px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+
+.nav{display:flex;flex-direction:column;gap:2px}
+.navbtn{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:none;border:0;padding:10px 12px;border-radius:10px;cursor:pointer;
+  font-size:13.5px;font-weight:500;color:var(--muted);transition:.15s;
+}
+.navbtn:hover{background:var(--cream);color:var(--ink)}
+.navbtn.active{background:var(--gold);color:#0E0E10;font-weight:600}
+.navbtn .ic{font-size:15px;width:18px;text-align:center}
+
+.side-foot{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:8px}
+.privacy-badge{
+  background:var(--green-soft);border:1px solid rgba(30,142,82,.25);
+  border-radius:10px;padding:10px;font-size:10.5px;line-height:1.45;color:var(--ink);
+}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{
+  display:flex;align-items:center;gap:14px;padding:16px 26px;
+  border-bottom:1px solid var(--line);background:var(--card);
+  position:sticky;top:0;z-index:20;flex-wrap:wrap;
+}
+.topbar h2{flex:1;min-width:120px}
+.wrap{padding:22px 26px 90px;max-width:1400px;width:100%}
+.view{display:none;animation:fade .22s ease}
+.view.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ===================== CARDS & GRID ===================== */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;box-shadow:var(--shadow)}
+.card + .card{margin-top:16px}
+.card-h{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.card-h h3{flex:1;min-width:100px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g5{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:1100px){.g4,.g5{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.grid{grid-template-columns:1fr!important}}
+
+.kpi{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:16px;box-shadow:var(--shadow);border-top:3px solid var(--gold);position:relative;
+}
+.kpi.acc-rust{border-top-color:var(--rust)}
+.kpi.acc-green{border-top-color:var(--green)}
+.kpi.acc-ink{border-top-color:var(--ink)}
+.kpi-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.kpi-value{font-size:24px;font-weight:600;margin-top:6px;line-height:1.15;word-break:break-word}
+.kpi-sub{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+/* ===================== FORMS ===================== */
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:11.5px;font-weight:600;color:var(--muted)}
+input,select,textarea{
+  background:var(--card);border:1px solid var(--line);border-radius:9px;
+  padding:9px 11px;width:100%;outline:none;transition:.15s;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft)}
+input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--gold);height:22px}
+input[type=color]{padding:2px;height:38px;cursor:pointer}
+input[type=checkbox]{width:auto;accent-color:var(--gold)}
+.err{color:var(--rust);font-size:11px;font-weight:500;min-height:0}
+input.invalid,select.invalid{border-color:var(--rust);box-shadow:0 0 0 3px var(--rust-soft)}
+
+.btn{
+  background:var(--gold);color:#0E0E10;border:0;border-radius:9px;padding:9px 15px;
+  font-weight:600;font-size:13px;cursor:pointer;transition:.15s;white-space:nowrap;
+}
+.btn:hover{filter:brightness(1.06);transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.btn.ghost:hover{background:var(--cream)}
+.btn.danger{background:var(--rust);color:#fff}
+.btn.sm{padding:6px 10px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.linkbtn{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;text-decoration:underline;padding:2px 4px}
+.linkbtn:hover{color:var(--rust)}
+
+.seg{display:inline-flex;background:var(--cream);border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
+.seg button{background:none;border:0;padding:6px 13px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--muted)}
+.seg button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:var(--shadow)}
+
+/* ===================== TABLES ===================== */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{
+  text-align:left;padding:10px 12px;background:var(--cream);font-weight:600;font-size:11px;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--muted);white-space:nowrap;
+  position:sticky;top:0;
+}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--ink)}
+td{padding:9px 12px;border-top:1px solid var(--line);vertical-align:middle}
+td.r,th.r{text-align:right}
+tbody tr:hover{background:var(--cream)}
+.tbl-scroll{max-height:440px;overflow:auto}
+td input,td select{padding:5px 7px;font-size:12px;border-radius:6px}
+
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600}
+.pill{background:var(--cream);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600}
+.good{color:var(--green)}.bad{color:var(--rust)}.dim{color:var(--muted)}
+.bg-good{background:var(--green-soft);color:var(--green)}
+.bg-bad{background:var(--rust-soft);color:var(--rust)}
+.bg-warn{background:var(--gold-soft);color:#8A6400}
+
+/* ===================== BARS ===================== */
+.bar{height:8px;background:var(--cream);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.bar > i{display:block;height:100%;background:var(--green);border-radius:999px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+.bar.warn > i{background:var(--gold)}
+.bar.over > i{background:var(--rust)}
+
+.chartbox{position:relative;height:260px}
+.chartbox.tall{height:320px}
+.chartbox.short{height:200px}
+
+/* ===================== MISC ===================== */
+.note{
+  font-size:11.5px;color:var(--muted);background:var(--cream);border:1px dashed var(--line);
+  border-radius:10px;padding:10px 12px;line-height:1.5;
+}
+.note.warn{background:var(--gold-soft);border-color:rgba(245,179,1,.5);border-style:solid;color:var(--ink)}
+.note.bad{background:var(--rust-soft);border-color:rgba(226,88,43,.45);border-style:solid;color:var(--ink)}
+.disclaimer{
+  margin-top:18px;padding:12px 14px;border-left:3px solid var(--rust);background:var(--rust-soft);
+  border-radius:0 10px 10px 0;font-size:11.5px;line-height:1.55;color:var(--ink);
+}
+.obs{display:flex;gap:10px;padding:11px 0;border-top:1px solid var(--line);font-size:13px;align-items:flex-start}
+.obs:first-child{border-top:0}
+.obs .dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:0 0 8px;background:var(--muted)}
+.empty{text-align:center;padding:34px 16px;color:var(--muted);font-size:13px}
+.empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:4px}
+
+/* Modals */
+.modal{position:fixed;inset:0;background:rgba(14,14,16,.55);display:none;place-items:center;z-index:100;padding:16px}
+.modal.open{display:grid}
+.modal-box{background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);width:min(640px,100%);max-height:88vh;overflow:auto;padding:22px}
+.modal-box h3{font-size:17px;margin-bottom:6px}
+
+/* Toast */
+#toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);opacity:0;pointer-events:none;
+  background:var(--ink);color:var(--cream);padding:11px 18px;border-radius:999px;font-size:13px;font-weight:500;z-index:200;transition:.25s;box-shadow:var(--shadow-lg)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+[data-theme="dark"] #toast{background:var(--gold);color:#0E0E10}
+
+/* Storage meter in topbar */
+.meter{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}
+.meter .bar{width:64px}
+
+/* Mobile bottom tab bar */
+.tabbar{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);z-index:50}
+.tabbar button{flex:1;background:none;border:0;padding:8px 2px 10px;font-size:9.5px;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+.tabbar button .ic{font-size:17px}
+.tabbar button.active{color:var(--ink);font-weight:600}
+.tabbar button.active .ic{filter:drop-shadow(0 3px 0 var(--gold))}
+@media(max-width:860px){
+  .sidebar{display:none}
+  .tabbar{display:flex}
+  .wrap{padding:16px 14px 96px}
+  .topbar{padding:13px 14px}
+  .kpi-value{font-size:20px}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">₹</div>
+      <div>
+        <h1 id="appName">MoneyDesk</h1>
+        <p>Personal Finance Workbench</p>
+      </div>
+    </div>
+    <nav class="nav" id="navMain">
+      <button class="navbtn active" data-view="dashboard"><span class="ic">◈</span> Dashboard</button>
+      <button class="navbtn" data-view="expenses"><span class="ic">▤</span> Expenses</button>
+      <button class="navbtn" data-view="loans"><span class="ic">◍</span> Loans &amp; EMI</button>
+      <button class="navbtn" data-view="tax"><span class="ic">§</span> Tax</button>
+      <button class="navbtn" data-view="goals"><span class="ic">◎</span> Goals</button>
+    </nav>
+    <div class="side-foot">
+      <button class="btn ghost sm" id="btnData">Data &amp; backup</button>
+      <button class="btn ghost sm" id="btnTheme">Dark mode</button>
+      <div class="privacy-badge">🔒 Your financial data is stored only in this browser, on this computer. Nothing is uploaded, ever.</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <!-- ===================== TOP BAR ===================== -->
+    <header class="topbar">
+      <h2 id="viewTitle">Dashboard</h2>
+      <span class="pill" id="fyPill">FY 2025-26</span>
+      <div class="meter" title="Browser storage used (limit is about 5 MB)">
+        <span>Storage</span>
+        <div class="bar" id="storageBar"><i style="width:0%"></i></div>
+        <span class="num" id="storagePct">0%</span>
+      </div>
+      <button class="btn sm" id="btnQuickBackup">Back up now</button>
+    </header>
+
+    <div class="wrap">
+
+    <!-- ============================================================
+         VIEW: DASHBOARD
+         ============================================================ -->
+    <section class="view active" id="view-dashboard">
+      <div id="dashBackupWarn"></div>
+
+      <div class="grid g4" style="margin-bottom:16px">
+        <div class="kpi"><div class="kpi-label">Spent this month</div><div class="kpi-value" id="kSpend">₹0</div><div class="kpi-sub" id="kSpendSub">—</div></div>
+        <div class="kpi acc-rust"><div class="kpi-label">Outstanding loans</div><div class="kpi-value" id="kLoanBal">₹0</div><div class="kpi-sub" id="kLoanSub">—</div></div>
+        <div class="kpi acc-ink"><div class="kpi-label">Estimated annual tax</div><div class="kpi-value" id="kTax">₹0</div><div class="kpi-sub" id="kTaxSub">—</div></div>
+        <div class="kpi acc-green"><div class="kpi-label">Goal corpus saved</div><div class="kpi-value" id="kGoals">₹0</div><div class="kpi-sub" id="kGoalsSub">—</div></div>
+      </div>
+
+      <div class="grid g3">
+        <div class="card" style="grid-column:span 2">
+          <div class="card-h"><h3>Last 6 months — spending vs EMI</h3></div>
+          <div class="chartbox"><canvas id="chDash6"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Monthly cash flow</h3></div>
+          <div class="field" style="margin-bottom:12px">
+            <label for="inpIncome">Your monthly take-home income (₹)</label>
+            <input type="number" id="inpIncome" min="0" step="1000" placeholder="e.g. 150000">
+            <div class="err" id="errIncome"></div>
+          </div>
+          <table>
+            <tbody id="cashflowBody"></tbody>
+          </table>
+          <div style="margin-top:14px">
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px">
+              <span>EMI to income ratio</span><span class="num" id="emiRatioTxt">—</span>
+            </div>
+            <div class="bar" id="emiRatioBar"><i style="width:0%"></i></div>
+            <div class="kpi-sub" id="emiRatioNote" style="margin-top:6px">Lenders generally like this to stay under 40%.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card">
+          <div class="card-h"><h3>Budget used this month</h3></div>
+          <div id="dashBudget"></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Financial health</h3></div>
+          <div id="healthPanel"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         VIEW: EXPENSES
+         ============================================================ -->
+    <section class="view" id="view-expenses">
+      <div class="grid g5" style="margin-bottom:16px">
+        <div class="kpi"><div class="kpi-label">Total this month</div><div class="kpi-value" id="xTotal">₹0</div><div class="kpi-sub" id="xTotalSub">—</div></div>
+        <div class="kpi acc-ink"><div class="kpi-label">Daily average</div><div class="kpi-value" id="xAvg">₹0</div><div class="kpi-sub">so far this month</div></div>
+        <div class="kpi acc-green"><div class="kpi-label">Projected month end</div><div class="kpi-value" id="xProj">₹0</div><div class="kpi-sub">at current run rate</div></div>
+        <div class="kpi acc-rust"><div class="kpi-label">Biggest single expense</div><div class="kpi-value" id="xMax">₹0</div><div class="kpi-sub" id="xMaxSub">—</div></div>
+        <div class="kpi"><div class="kpi-label">Most frequent category</div><div class="kpi-value" id="xFreq" style="font-size:17px">—</div><div class="kpi-sub" id="xFreqSub">—</div></div>
+      </div>
+
+      <!-- Add expense -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Add an expense</h3>
+          <button class="btn ghost sm" id="btnManageCats">Manage categories &amp; budgets</button>
+        </div>
+        <div id="quickAdd" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
+        <div class="grid" style="grid-template-columns:repeat(6,minmax(0,1fr));gap:12px">
+          <div class="field"><label for="exAmt">Amount (₹)</label><input type="number" id="exAmt" min="0" step="1" placeholder="0"><div class="err" id="errExAmt"></div></div>
+          <div class="field"><label for="exDate">Date</label><input type="date" id="exDate"></div>
+          <div class="field"><label for="exCat">Category</label><select id="exCat"></select></div>
+          <div class="field"><label for="exMode">Payment mode</label><select id="exMode"></select></div>
+          <div class="field"><label for="exNote">Note</label><input type="text" id="exNote" placeholder="What was it for?"></div>
+          <div class="field"><label for="exTag">Tag (optional)</label><input type="text" id="exTag" placeholder="e.g. office"></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:center;margin-top:14px;flex-wrap:wrap">
+          <label style="display:flex;gap:7px;align-items:center;font-size:12.5px;font-weight:500;cursor:pointer">
+            <input type="checkbox" id="exRecur"> Repeat every month on this date
+          </label>
+          <button class="btn" id="btnAddExpense">Add expense</button>
+        </div>
+      </div>
+
+      <!-- Insights -->
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card"><div class="card-h"><h3>Where the money went</h3></div><div class="chartbox"><canvas id="chCat"></canvas></div></div>
+        <div class="card"><div class="card-h"><h3>Spending over time</h3></div><div class="chartbox"><canvas id="chTime"></canvas></div></div>
+        <div class="card">
+          <div class="card-h"><h3>This month vs last month</h3><span class="chip" id="momChip">—</span></div>
+          <div class="chartbox short"><canvas id="chMoM"></canvas></div>
+        </div>
+        <div class="card"><div class="card-h"><h3>How you paid</h3></div><div class="chartbox short"><canvas id="chMode"></canvas></div></div>
+      </div>
+
+      <!-- Budgets -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-h"><h3>Category budgets</h3><span class="kpi-sub" id="budgetPeriod"></span></div>
+        <div id="budgetList"></div>
+      </div>
+
+      <!-- Table -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-h">
+          <h3>All expenses</h3>
+          <div class="seg" id="segPeriod">
+            <button class="on" data-period="month">Monthly</button>
+            <button data-period="year">Yearly (FY)</button>
+            <button data-period="all">All time</button>
+          </div>
+          <button class="btn ghost sm" id="btnExportCsv">Export CSV</button>
+        </div>
+        <div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px">
+          <div class="field"><label for="fFrom">From</label><input type="date" id="fFrom"></div>
+          <div class="field"><label for="fTo">To</label><input type="date" id="fTo"></div>
+          <div class="field"><label for="fCat">Category</label><select id="fCat"></select></div>
+          <div class="field"><label for="fMode">Payment mode</label><select id="fMode"></select></div>
+          <div class="field"><label for="fSearch">Search notes</label><input type="text" id="fSearch" placeholder="Type to filter"></div>
+        </div>
+        <div class="tablewrap tbl-scroll">
+          <table id="tblExpenses">
+            <thead><tr>
+              <th class="sortable" data-sort="date">Date</th>
+              <th class="sortable" data-sort="category">Category</th>
+              <th class="sortable" data-sort="note">Note</th>
+              <th class="sortable" data-sort="mode">Mode</th>
+              <th class="sortable r" data-sort="amount">Amount</th>
+              <th class="r">Actions</th>
+            </tr></thead>
+            <tbody id="expBody"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn ghost sm" id="pgPrev">Previous</button>
+          <span class="kpi-sub" id="pgInfo">—</span>
+          <button class="btn ghost sm" id="pgNext">Next</button>
+          <span style="flex:1"></span>
+          <span class="kpi-sub num" id="filterTotal"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         VIEW: LOANS & EMI
+         ============================================================ -->
+    <section class="view" id="view-loans">
+      <div class="grid g3">
+        <!-- Calculator -->
+        <div class="card" style="grid-column:span 2">
+          <div class="card-h"><h3>EMI calculator</h3>
+            <div class="seg" id="segTenure"><button class="on" data-unit="months">Months</button><button data-unit="years">Years</button></div>
+          </div>
+          <div class="field" style="margin-bottom:14px">
+            <label for="lnAmt">Loan amount (₹) — <span class="num" id="lblAmt"></span></label>
+            <input type="number" id="lnAmt" min="1000" step="10000" value="3000000">
+            <input type="range" id="rgAmt" min="50000" max="30000000" step="50000" value="3000000">
+            <div class="err" id="errAmt"></div>
+          </div>
+          <div class="field" style="margin-bottom:14px">
+            <label for="lnRate">Annual interest rate (%) — <span class="num" id="lblRate"></span></label>
+            <input type="number" id="lnRate" min="0.1" max="60" step="0.05" value="8.5">
+            <input type="range" id="rgRate" min="1" max="30" step="0.05" value="8.5">
+            <div class="err" id="errRate"></div>
+          </div>
+          <div class="field">
+            <label for="lnTen">Tenure (<span id="lblTenUnit">months</span>) — <span class="num" id="lblTen"></span></label>
+            <input type="number" id="lnTen" min="1" step="1" value="240">
+            <input type="range" id="rgTen" min="1" max="360" step="1" value="240">
+            <div class="err" id="errTen"></div>
+          </div>
+          <div class="grid g3" style="margin-top:18px">
+            <div class="kpi"><div class="kpi-label">Monthly EMI</div><div class="kpi-value" id="oEmi">₹0</div></div>
+            <div class="kpi acc-rust"><div class="kpi-label">Total interest</div><div class="kpi-value" id="oInt">₹0</div><div class="kpi-sub" id="oIntPct">—</div></div>
+            <div class="kpi acc-ink"><div class="kpi-label">Total payable</div><div class="kpi-value" id="oTot">₹0</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Principal vs interest</h3></div>
+          <div class="chartbox"><canvas id="chPI"></canvas></div>
+          <button class="btn" id="btnSaveLoan" style="width:100%;margin-top:14px">Save this as a loan</button>
+        </div>
+      </div>
+
+      <!-- Prepayment simulator -->
+      <div class="card" style="margin-top:16px;border-top:3px solid var(--gold)">
+        <div class="card-h"><h3>Prepayment simulator</h3><span class="kpi-sub">See what paying extra actually buys you</span></div>
+        <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+          <div class="field"><label for="ppLump">One-time lump sum (₹)</label><input type="number" id="ppLump" min="0" step="10000" value="0"></div>
+          <div class="field"><label for="ppMonth">Paid in month number</label><input type="number" id="ppMonth" min="1" step="1" value="12"></div>
+          <div class="field"><label for="ppExtra">Extra every month (₹)</label><input type="number" id="ppExtra" min="0" step="1000" value="0"></div>
+        </div>
+        <div class="grid g3" style="margin-top:16px">
+          <div class="kpi acc-green"><div class="kpi-label">Months saved</div><div class="kpi-value" id="ppMonths">0</div><div class="kpi-sub" id="ppMonthsSub">—</div></div>
+          <div class="kpi acc-green"><div class="kpi-label">Interest saved</div><div class="kpi-value" id="ppSaved">₹0</div></div>
+          <div class="kpi acc-ink"><div class="kpi-label">New closing date</div><div class="kpi-value" id="ppEnd" style="font-size:19px">—</div><div class="kpi-sub" id="ppEndSub">—</div></div>
+        </div>
+        <div class="chartbox tall" style="margin-top:16px"><canvas id="chPre"></canvas></div>
+      </div>
+
+      <!-- Amortisation -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-h">
+          <h3>Amortisation schedule</h3>
+          <div class="seg" id="segAmort"><button class="on" data-mode="month">Month by month</button><button data-mode="year">Yearly summary</button></div>
+          <label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" id="amortWithPre"> Include prepayments</label>
+          <button class="btn ghost sm" id="btnAmortCsv">Download CSV</button>
+        </div>
+        <div class="tablewrap tbl-scroll"><table id="tblAmort"></table></div>
+      </div>
+
+      <!-- Saved loans -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-h"><h3>Your loans</h3><span class="kpi-sub" id="loanSummary"></span></div>
+        <div class="grid g3" id="loanCards"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-h"><h3>Compare loan offers</h3><span class="kpi-sub">Pick two or three saved loans</span></div>
+        <div id="cmpPicker" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px"></div>
+        <div class="tablewrap"><table id="tblCompare"></table></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         VIEW: TAX
+         ============================================================ -->
+    <section class="view" id="view-tax">
+      <div class="card">
+        <div class="card-h">
+          <h3>Income tax estimate</h3>
+          <div class="field" style="max-width:170px"><select id="taxFY"></select></div>
+          <div class="field" style="max-width:190px"><select id="taxAge">
+            <option value="below60">Below 60 years</option>
+            <option value="senior">Senior citizen (60–79)</option>
+            <option value="super">Super senior (80+)</option>
+          </select></div>
+          <button class="btn ghost sm" id="btnTaxSettings">Edit tax settings</button>
+        </div>
+        <div class="note warn"><b>Verify these slabs against incometax.gov.in or with your CA before relying on them. Budget changes are not automatic.</b><br>
+        Slabs are seeded up to <b>FY 2025-26</b>. If a later Budget has changed the rates, open "Edit tax settings" and update them, or add a new financial year in the TAX_CONFIG block near the top of this file.</div>
+      </div>
+
+      <div class="grid g2" style="margin-top:16px">
+        <!-- Income -->
+        <div class="card">
+          <div class="card-h"><h3>Income</h3></div>
+          <div class="grid g2" style="gap:12px">
+            <div class="field"><label for="tGross">Gross salary (₹ per year)</label><input type="number" id="tGross" min="0" step="10000" value="1500000"><div class="err" id="errGross"></div></div>
+            <div class="field"><label for="tOther">Other income (interest, etc.)</label><input type="number" id="tOther" min="0" step="1000" value="0"></div>
+            <div class="field"><label for="tHP">House property income or loss</label><input type="number" id="tHP" step="1000" value="0"><div class="kpi-sub">Use a negative number for a loss</div></div>
+            <div class="field"><label for="tCG">Capital gains</label><input type="number" id="tCG" min="0" step="1000" value="0"><div class="kpi-sub">Taxed at slab rates here</div></div>
+          </div>
+        </div>
+
+        <!-- Old regime deductions -->
+        <div class="card">
+          <div class="card-h"><h3>Old regime deductions</h3></div>
+          <div class="grid g2" style="gap:12px">
+            <div class="field"><label for="d80C">Section 80C</label><input type="number" id="d80C" min="0" step="5000" value="150000"></div>
+            <div class="field"><label for="d80CCD1B">80CCD(1B) — NPS</label><input type="number" id="d80CCD1B" min="0" step="5000" value="0"></div>
+            <div class="field"><label for="d80Dself">80D — self &amp; family</label><input type="number" id="d80Dself" min="0" step="1000" value="0"></div>
+            <div class="field"><label for="d80Dpar">80D — parents</label><input type="number" id="d80Dpar" min="0" step="1000" value="0"></div>
+            <div class="field"><label for="d80Dpar60">Are parents 60+?</label><select id="d80Dpar60"><option value="no">No</option><option value="yes">Yes</option></select></div>
+            <div class="field"><label for="d80E">80E — education loan interest</label><input type="number" id="d80E" min="0" step="1000" value="0"></div>
+            <div class="field"><label for="d80G">80G — donations</label><input type="number" id="d80G" min="0" step="1000" value="0"></div>
+            <div class="field"><label for="d80TT">80TTA / 80TTB — savings interest</label><input type="number" id="d80TT" min="0" step="1000" value="0"></div>
+            <div class="field"><label for="d24b">Section 24(b) — home loan interest</label><input type="number" id="d24b" min="0" step="10000" value="0"></div>
+            <div class="field"><label for="dPT">Professional tax paid</label><input type="number" id="dPT" min="0" step="200" value="0"></div>
+          </div>
+          <div class="note" style="margin-top:12px">Caps are applied automatically from the tax settings, so entering more than the limit will not inflate your refund.</div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:16px">
+        <!-- HRA -->
+        <div class="card">
+          <div class="card-h"><h3>HRA exemption calculator</h3><span class="chip bg-warn" id="hraOut">₹0 exempt</span></div>
+          <div class="grid g2" style="gap:12px">
+            <div class="field"><label for="hBasic">Basic salary + DA (per year)</label><input type="number" id="hBasic" min="0" step="10000" value="0"></div>
+            <div class="field"><label for="hRecv">HRA received (per year)</label><input type="number" id="hRecv" min="0" step="10000" value="0"></div>
+            <div class="field"><label for="hRent">Rent paid (per year)</label><input type="number" id="hRent" min="0" step="10000" value="0"></div>
+            <div class="field"><label for="hMetro">City</label><select id="hMetro"><option value="metro">Metro (Delhi, Mumbai, Kolkata, Chennai)</option><option value="non">Non-metro</option></select></div>
+          </div>
+          <div id="hraBreak" style="margin-top:12px"></div>
+        </div>
+
+        <!-- New regime -->
+        <div class="card">
+          <div class="card-h"><h3>New regime</h3></div>
+          <div class="field" style="margin-bottom:12px"><label for="nNPS">Employer NPS contribution — 80CCD(2)</label><input type="number" id="nNPS" min="0" step="5000" value="0"></div>
+          <div class="note">The new regime allows only the standard deduction and the employer's NPS contribution. Everything in the old-regime panel is ignored when computing it.</div>
+          <div class="card-h" style="margin-top:18px"><h3>What if I invest more under 80C?</h3></div>
+          <div class="field">
+            <label for="wiSlider">80C investment: <span class="num" id="wiVal">₹1,50,000</span></label>
+            <input type="range" id="wiSlider" min="0" max="150000" step="5000" value="150000">
+          </div>
+          <div class="chartbox short" style="margin-top:10px"><canvas id="chWhatIf"></canvas></div>
+          <div class="kpi-sub" id="wiNote" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <!-- Comparison -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-h"><h3>Old regime vs new regime</h3><span class="chip bg-good" id="regimeVerdict">—</span></div>
+        <div class="grid g2" id="regimeCards"></div>
+        <div class="grid g4" style="margin-top:16px">
+          <div class="kpi"><div class="kpi-label">Effective tax rate</div><div class="kpi-value" id="tEff">0%</div><div class="kpi-sub">tax ÷ gross income</div></div>
+          <div class="kpi acc-ink"><div class="kpi-label">Marginal tax rate</div><div class="kpi-value" id="tMarg">0%</div><div class="kpi-sub">on your next ₹10,000</div></div>
+          <div class="kpi acc-green"><div class="kpi-label">Monthly TDS estimate</div><div class="kpi-value" id="tTds">₹0</div><div class="kpi-sub">annual tax ÷ 12</div></div>
+          <div class="kpi acc-rust"><div class="kpi-label">Take-home after tax</div><div class="kpi-value" id="tNet">₹0</div><div class="kpi-sub">per month, before other cuts</div></div>
+        </div>
+      </div>
+
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card"><div class="card-h"><h3>Slab-wise breakdown — old regime</h3></div><div class="tablewrap"><table id="tblSlabOld"></table></div></div>
+        <div class="card"><div class="card-h"><h3>Slab-wise breakdown — new regime</h3></div><div class="tablewrap"><table id="tblSlabNew"></table></div></div>
+      </div>
+
+      <div class="disclaimer">This tool provides estimates for planning purposes only. It is not tax, investment, or financial advice. Verify with a qualified chartered accountant or financial adviser before acting on these numbers.</div>
+    </section>
+
+    <!-- ============================================================
+         VIEW: GOALS
+         ============================================================ -->
+    <section class="view" id="view-goals">
+      <div class="grid g2">
+        <!-- SIP -->
+        <div class="card">
+          <div class="card-h"><h3>SIP calculator</h3></div>
+          <div class="grid g3" style="gap:12px">
+            <div class="field"><label for="sipAmt">Monthly investment (₹)</label><input type="number" id="sipAmt" min="100" step="500" value="25000"></div>
+            <div class="field"><label for="sipRate">Expected return (% a year)</label><input type="number" id="sipRate" min="0" max="50" step="0.5" value="12"></div>
+            <div class="field"><label for="sipYrs">Duration (years)</label><input type="number" id="sipYrs" min="1" max="50" step="1" value="15"></div>
+          </div>
+          <div class="grid g3" style="margin-top:14px">
+            <div class="kpi acc-green"><div class="kpi-label">Maturity value</div><div class="kpi-value" id="sipMat">₹0</div></div>
+            <div class="kpi acc-ink"><div class="kpi-label">You invest</div><div class="kpi-value" id="sipInv">₹0</div></div>
+            <div class="kpi"><div class="kpi-label">Gains</div><div class="kpi-value" id="sipGain">₹0</div></div>
+          </div>
+          <div class="chartbox" style="margin-top:14px"><canvas id="chSip"></canvas></div>
+        </div>
+
+        <!-- Lumpsum + Goal planner -->
+        <div>
+          <div class="card">
+            <div class="card-h"><h3>Lumpsum calculator</h3></div>
+            <div class="grid g3" style="gap:12px">
+              <div class="field"><label for="lsAmt">One-time amount (₹)</label><input type="number" id="lsAmt" min="1000" step="10000" value="500000"></div>
+              <div class="field"><label for="lsRate">Expected return (%)</label><input type="number" id="lsRate" min="0" max="50" step="0.5" value="12"></div>
+              <div class="field"><label for="lsYrs">Duration (years)</label><input type="number" id="lsYrs" min="1" max="50" step="1" value="10"></div>
+            </div>
+            <div class="grid g3" style="margin-top:14px">
+              <div class="kpi acc-green"><div class="kpi-label">Maturity value</div><div class="kpi-value" id="lsMat">₹0</div></div>
+              <div class="kpi acc-ink"><div class="kpi-label">You invest</div><div class="kpi-value" id="lsInv">₹0</div></div>
+              <div class="kpi"><div class="kpi-label">Gains</div><div class="kpi-value" id="lsGain">₹0</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>Goal planner</h3></div>
+            <div class="grid g2" style="gap:12px">
+              <div class="field"><label for="gpTarget">Target amount in today's money (₹)</label><input type="number" id="gpTarget" min="1000" step="50000" value="2000000"></div>
+              <div class="field"><label for="gpDate">Target date</label><input type="date" id="gpDate"></div>
+              <div class="field"><label for="gpRate">Expected return (%)</label><input type="number" id="gpRate" min="0" max="50" step="0.5" value="12"></div>
+              <div class="field"><label for="gpInfl">Inflation adjustment (%)</label><input type="number" id="gpInfl" min="0" max="20" step="0.5" value="6"></div>
+            </div>
+            <div class="grid g2" style="margin-top:14px">
+              <div class="kpi"><div class="kpi-label">Monthly SIP needed</div><div class="kpi-value" id="gpSip">₹0</div><div class="kpi-sub" id="gpSipSub">—</div></div>
+              <div class="kpi acc-ink"><div class="kpi-label">Inflated target</div><div class="kpi-value" id="gpInflated">₹0</div><div class="kpi-sub" id="gpYears">—</div></div>
+            </div>
+            <button class="btn" id="btnSaveGoal" style="width:100%;margin-top:14px">Save this as a goal</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Retirement -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-h"><h3>Retirement estimator</h3></div>
+        <div class="grid g5" style="gap:12px">
+          <div class="field"><label for="rAge">Current age</label><input type="number" id="rAge" min="18" max="75" step="1" value="32"></div>
+          <div class="field"><label for="rRet">Retirement age</label><input type="number" id="rRet" min="35" max="85" step="1" value="60"></div>
+          <div class="field"><label for="rExp">Monthly expense today (₹)</label><input type="number" id="rExp" min="1000" step="1000" value="60000"></div>
+          <div class="field"><label for="rInfl">Inflation (%)</label><input type="number" id="rInfl" min="0" max="20" step="0.5" value="6"></div>
+          <div class="field"><label for="rRate">Return before retirement (%)</label><input type="number" id="rRate" min="0" max="30" step="0.5" value="12"></div>
+        </div>
+        <div class="grid g4" style="margin-top:16px">
+          <div class="kpi acc-rust"><div class="kpi-label">Corpus required</div><div class="kpi-value" id="rCorpus">₹0</div><div class="kpi-sub" id="rCorpusSub">—</div></div>
+          <div class="kpi"><div class="kpi-label">Monthly expense at 60</div><div class="kpi-value" id="rExpFut">₹0</div><div class="kpi-sub">after inflation</div></div>
+          <div class="kpi acc-green"><div class="kpi-label">SIP needed from today</div><div class="kpi-value" id="rSip">₹0</div><div class="kpi-sub" id="rSipSub">—</div></div>
+          <div class="kpi acc-ink"><div class="kpi-label">Years to build it</div><div class="kpi-value" id="rYears">0</div><div class="kpi-sub">till retirement</div></div>
+        </div>
+        <div class="note" style="margin-top:14px">Assumes the corpus keeps earning 7% after retirement while expenses keep rising with inflation, and is drawn down over 25 years. Rough by nature — treat it as a direction, not a promise.</div>
+      </div>
+
+      <!-- Saved goals -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-h"><h3>Your goals</h3><span class="kpi-sub" id="goalSummary"></span></div>
+        <div class="grid g3" id="goalCards"></div>
+      </div>
+
+      <div class="disclaimer">This tool provides estimates for planning purposes only. It is not tax, investment, or financial advice. Verify with a qualified chartered accountant or financial adviser before acting on these numbers.</div>
+    </section>
+
+    </div><!-- /wrap -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- Mobile bottom tabs -->
+<nav class="tabbar" id="navTabs">
+  <button class="active" data-view="dashboard"><span class="ic">◈</span>Dashboard</button>
+  <button data-view="expenses"><span class="ic">▤</span>Expenses</button>
+  <button data-view="loans"><span class="ic">◍</span>Loans</button>
+  <button data-view="tax"><span class="ic">§</span>Tax</button>
+  <button data-view="goals"><span class="ic">◎</span>Goals</button>
+</nav>
+
+<!-- ===================== MODALS ===================== -->
+<div class="modal" id="mData"><div class="modal-box">
+  <h3>Data &amp; backup</h3>
+  <p class="kpi-sub">Everything lives in this browser only. Clearing browser data wipes it, so keep a backup file somewhere safe.</p>
+  <div class="grid g2" style="margin-top:16px">
+    <button class="btn" id="btnExport">Export all data (.json)</button>
+    <button class="btn ghost" id="btnImport">Import from backup</button>
+    <button class="btn ghost" id="btnExportCsv2">Export expenses as CSV</button>
+    <button class="btn danger" id="btnClear">Clear all data</button>
+  </div>
+  <input type="file" id="fileImport" accept="application/json,.json" style="display:none">
+  <div class="card" style="margin-top:16px;box-shadow:none">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span>Storage used</span><span class="num" id="storageTxt">—</span></div>
+    <div class="bar" id="storageBar2"><i style="width:0%"></i></div>
+    <div class="kpi-sub" id="storageNote" style="margin-top:8px">—</div>
+    <div class="kpi-sub" id="lastBackupTxt" style="margin-top:6px">—</div>
+    <div class="kpi-sub" style="margin-top:6px">Data schema version <span class="num" id="schemaTxt">—</span></div>
+  </div>
+  <div style="text-align:right;margin-top:16px"><button class="btn ghost" data-close>Close</button></div>
+</div></div>
+
+<div class="modal" id="mCats"><div class="modal-box">
+  <h3>Categories &amp; budgets</h3>
+  <p class="kpi-sub">Rename, recolour, set a monthly budget, or remove a category you never use.</p>
+  <div class="tablewrap" style="margin-top:14px"><table id="tblCats"></table></div>
+  <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+    <input type="text" id="newCatName" placeholder="New category name" style="flex:1;min-width:150px">
+    <input type="text" id="newCatIcon" placeholder="Icon" value="●" style="width:70px">
+    <input type="color" id="newCatColor" value="#F5B301" style="width:56px">
+    <button class="btn" id="btnAddCat">Add</button>
+  </div>
+  <div style="text-align:right;margin-top:16px"><button class="btn ghost" data-close>Done</button></div>
+</div></div>
+
+<div class="modal" id="mTax"><div class="modal-box">
+  <h3>Edit tax settings</h3>
+  <p class="kpi-sub">These values feed the calculator directly. Change them when the Budget changes — no code required.</p>
+  <div id="taxEditor" style="margin-top:14px"></div>
+  <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+    <button class="btn" id="btnTaxSave">Save settings</button>
+    <button class="btn ghost" id="btnTaxReset">Reset to defaults</button>
+    <span style="flex:1"></span>
+    <button class="btn ghost" data-close>Close</button>
+  </div>
+</div></div>
+
+<div class="modal" id="mLoan"><div class="modal-box" style="width:min(460px,100%)">
+  <h3>Save this loan</h3>
+  <div class="grid g2" style="gap:12px;margin-top:14px">
+    <div class="field"><label for="slName">Loan name</label><input type="text" id="slName" placeholder="e.g. Home loan — HDFC"></div>
+    <div class="field"><label for="slType">Type</label><select id="slType"><option>Home</option><option>Car</option><option>Personal</option><option>Education</option><option>Other</option></select></div>
+    <div class="field" style="grid-column:span 2"><label for="slStart">First EMI date</label><input type="date" id="slStart"></div>
+  </div>
+  <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="btnLoanConfirm">Save loan</button></div>
+</div></div>
+
+<div class="modal" id="mGoal"><div class="modal-box" style="width:min(460px,100%)">
+  <h3>Save this goal</h3>
+  <div class="grid g2" style="gap:12px;margin-top:14px">
+    <div class="field" style="grid-column:span 2"><label for="sgName">Goal name</label><input type="text" id="sgName" placeholder="e.g. Down payment"></div>
+    <div class="field"><label for="sgSaved">Already saved (₹)</label><input type="number" id="sgSaved" min="0" step="10000" value="0"></div>
+    <div class="field"><label for="sgSip">Monthly SIP (₹)</label><input type="number" id="sgSip" min="0" step="1000" value="0"></div>
+  </div>
+  <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="btnGoalConfirm">Save goal</button></div>
+</div></div>
+
+<div class="modal" id="mWipe"><div class="modal-box" style="width:min(460px,100%)">
+  <h3>Clear all data</h3>
+  <div class="note bad" style="margin-top:10px">This removes every expense, loan, goal and setting from this browser. It cannot be undone. Export a backup first if you might want any of it back.</div>
+  <div class="field" style="margin-top:14px"><label for="wipeConfirm">Type DELETE to confirm</label><input type="text" id="wipeConfirm" placeholder="DELETE" autocomplete="off"></div>
+  <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn danger" id="btnWipeConfirm" disabled>Clear everything</button></div>
+</div></div>
+
+<div class="modal" id="mImport"><div class="modal-box" style="width:min(460px,100%)">
+  <h3>Replace current data?</h3>
+  <div class="note bad" style="margin-top:10px" id="importSummary"></div>
+  <p class="kpi-sub" style="margin-top:10px">Importing overwrites everything currently in this browser.</p>
+  <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn danger" id="btnImportConfirm">Replace my data</button></div>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* =====================================================================================
+   MoneyDesk — Personal Finance Workbench
+   Single-file, offline, localStorage-only. No network calls except the two CDN tags.
+   ===================================================================================== */
+
+/* =====================================================================================
+   SECTION 1 — TAX_CONFIG
+   ------------------------------------------------------------------------------------
+   EVERY Indian tax number lives here and nowhere else: slabs, deduction caps, rebate
+   thresholds, surcharge rates and cess, keyed by financial year.
+   When the Union Budget changes something, edit THIS OBJECT ONLY. The calculation
+   engine below reads every figure from here and hard-codes nothing.
+
+   To add a new financial year: copy the most recent block, change the key and the
+   label, edit the numbers, and set DEFAULT_FY to the new key.
+
+   Slab format: { upto: <ceiling in rupees, null = no ceiling>, rate: <fraction> }
+   Slabs must be listed in ascending order of `upto`.
+   ===================================================================================== */
+const TAX_CONFIG_DEFAULT = {
+  meta: { defaultFY: "2025-26" },
+
+  "2025-26": {
+    label: "FY 2025-26 (AY 2026-27)",
+    cess: 0.04,                       // Health & education cess on (tax + surcharge)
+    old: {
+      standardDeduction: 50000,       // Section 16(ia) for salaried
+      // Basic exemption differs by age, so slabs are stored per age band.
+      slabs: {
+        below60: [ {upto:250000, rate:0}, {upto:500000, rate:0.05}, {upto:1000000, rate:0.20}, {upto:null, rate:0.30} ],
+        senior:  [ {upto:300000, rate:0}, {upto:500000, rate:0.05}, {upto:1000000, rate:0.20}, {upto:null, rate:0.30} ],
+        super:   [ {upto:500000, rate:0}, {upto:1000000, rate:0.20}, {upto:null, rate:0.30} ]
+      },
+      rebate87A: { incomeLimit: 500000, maxRebate: 12500, marginalRelief: false },
+      surcharge: [ {above:5000000, rate:0.10}, {above:10000000, rate:0.15}, {above:20000000, rate:0.25}, {above:50000000, rate:0.37} ],
+      limits: {
+        c80C: 150000,                 // 80C + 80CCC + 80CCD(1) combined ceiling
+        c80CCD1B: 50000,              // Extra NPS deduction
+        c80D_self: 25000,             // Health insurance, self & family (below 60)
+        c80D_self_senior: 50000,      // If the taxpayer is 60+
+        c80D_parents: 25000,          // Parents below 60
+        c80D_parents_senior: 50000,   // Parents 60+
+        c80TTA: 10000,                // Savings interest, below 60
+        c80TTB: 50000,                // Interest income, 60+
+        c24b: 200000,                 // Home loan interest, self-occupied
+        housePropertyLossCap: 200000  // Max HP loss set off against other heads
+      }
+    },
+    new: {
+      standardDeduction: 75000,
+      slabs: [
+        {upto:400000,  rate:0},
+        {upto:800000,  rate:0.05},
+        {upto:1200000, rate:0.10},
+        {upto:1600000, rate:0.15},
+        {upto:2000000, rate:0.20},
+        {upto:2400000, rate:0.25},
+        {upto:null,    rate:0.30}
+      ],
+      rebate87A: { incomeLimit: 1200000, maxRebate: 60000, marginalRelief: true },
+      surcharge: [ {above:5000000, rate:0.10}, {above:10000000, rate:0.15}, {above:20000000, rate:0.25} ],
+      limits: { employerNPSpctOfBasic: 0.14 }   // 80CCD(2) ceiling as a share of basic
+    }
+  },
+
+  "2024-25": {
+    label: "FY 2024-25 (AY 2025-26)",
+    cess: 0.04,
+    old: {
+      standardDeduction: 50000,
+      slabs: {
+        below60: [ {upto:250000, rate:0}, {upto:500000, rate:0.05}, {upto:1000000, rate:0.20}, {upto:null, rate:0.30} ],
+        senior:  [ {upto:300000, rate:0}, {upto:500000, rate:0.05}, {upto:1000000, rate:0.20}, {upto:null, rate:0.30} ],
+        super:   [ {upto:500000, rate:0}, {upto:1000000, rate:0.20}, {upto:null, rate:0.30} ]
+      },
+      rebate87A: { incomeLimit: 500000, maxRebate: 12500, marginalRelief: false },
+      surcharge: [ {above:5000000, rate:0.10}, {above:10000000, rate:0.15}, {above:20000000, rate:0.25}, {above:50000000, rate:0.37} ],
+      limits: { c80C:150000, c80CCD1B:50000, c80D_self:25000, c80D_self_senior:50000, c80D_parents:25000,
+                c80D_parents_senior:50000, c80TTA:10000, c80TTB:50000, c24b:200000, housePropertyLossCap:200000 }
+    },
+    new: {
+      standardDeduction: 75000,
+      slabs: [ {upto:300000,rate:0}, {upto:700000,rate:0.05}, {upto:1000000,rate:0.10},
+               {upto:1200000,rate:0.15}, {upto:1500000,rate:0.20}, {upto:null,rate:0.30} ],
+      rebate87A: { incomeLimit: 700000, maxRebate: 25000, marginalRelief: true },
+      surcharge: [ {above:5000000,rate:0.10}, {above:10000000,rate:0.15}, {above:20000000,rate:0.25} ],
+      limits: { employerNPSpctOfBasic: 0.14 }
+    }
+  }
+};
+
+/* =====================================================================================
+   SECTION 2 — STORAGE
+   Each module gets its own localStorage key. If one key is corrupted we reset only that
+   key and keep the rest of the app alive, rather than crashing on load.
+   ===================================================================================== */
+const SCHEMA_VERSION = 1;
+const K = {
+  meta:'md.meta', settings:'md.settings', expenses:'md.expenses', categories:'md.categories',
+  budgets:'md.budgets', loans:'md.loans', goals:'md.goals', tax:'md.tax', taxcfg:'md.taxcfg'
+};
+
+function readKey(key, fallback){
+  try{
+    const raw = localStorage.getItem(key);
+    if(raw === null) return structuredCloneSafe(fallback);
+    const val = JSON.parse(raw);
+    if(val === null || typeof val !== typeof fallback) throw new Error('shape mismatch');
+    return val;
+  }catch(e){
+    // Corrupted or unreadable: wipe just this key and carry on with defaults.
+    try{ localStorage.removeItem(key); }catch(_){}
+    console.warn('Reset corrupted storage key:', key, e);
+    setTimeout(()=>toast('Some saved data for "'+key+'" was unreadable and has been reset.'), 900);
+    return structuredCloneSafe(fallback);
+  }
+}
+function writeKey(key, value){
+  try{
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  }catch(e){
+    if(e && (e.name === 'QuotaExceededError' || e.code === 22)){
+      toast('Browser storage is full. Export a backup, then clear older expenses.');
+      openModal('mData');
+    }else{
+      toast('Could not save to this browser. Check that storage is not blocked.');
+    }
+    console.error(e);
+    return false;
+  }
+}
+function structuredCloneSafe(v){ return JSON.parse(JSON.stringify(v)); }
+
+const DEFAULT_CATEGORIES = [
+  {id:'food',   name:'Food & Dining',    color:'#E2582B', icon:'🍽'},
+  {id:'groc',   name:'Groceries',        color:'#1E8E52', icon:'🛒'},
+  {id:'trans',  name:'Transport',        color:'#3B7DD8', icon:'🚌'},
+  {id:'fuel',   name:'Fuel',             color:'#8A5A2B', icon:'⛽'},
+  {id:'rent',   name:'Rent',             color:'#0E0E10', icon:'🏠'},
+  {id:'util',   name:'Utilities',        color:'#F5B301', icon:'💡'},
+  {id:'mobile', name:'Mobile & Internet',color:'#00A6A6', icon:'📶'},
+  {id:'shop',   name:'Shopping',         color:'#C94FA0', icon:'🛍'},
+  {id:'ent',    name:'Entertainment',    color:'#7A5AF8', icon:'🎬'},
+  {id:'health', name:'Health',           color:'#D6336C', icon:'🩺'},
+  {id:'edu',    name:'Education',        color:'#2F6FED', icon:'📚'},
+  {id:'travel', name:'Travel',           color:'#0E9F6E', icon:'✈️'},
+  {id:'ins',    name:'Insurance',        color:'#6B7280', icon:'🛡'},
+  {id:'inv',    name:'Investments',      color:'#0F766E', icon:'📈'},
+  {id:'emi',    name:'EMI',              color:'#B45309', icon:'🏦'},
+  {id:'gift',   name:'Gifts',            color:'#EC4899', icon:'🎁'},
+  {id:'pers',   name:'Personal Care',    color:'#9333EA', icon:'🧴'},
+  {id:'other',  name:'Other',            color:'#6E6E76', icon:'●'}
+];
+const PAY_MODES = ['Cash','UPI','Credit Card','Debit Card','Net Banking'];
+
+const DEFAULT_SETTINGS = { theme:'light', monthlyIncome:0, appName:'MoneyDesk' };
+const DEFAULT_TAXPROFILE = {
+  fy:null, age:'below60', gross:1500000, other:0, hp:0, cg:0,
+  d80C:150000, d80CCD1B:0, d80Dself:0, d80Dpar:0, d80Dpar60:'no', d80E:0, d80G:0, d80TT:0, d24b:0, dPT:0,
+  hBasic:0, hRecv:0, hRent:0, hMetro:'metro', nNPS:0
+};
+
+// ---- Live application state -----------------------------------------------------
+let META, SETTINGS, EXPENSES, CATEGORIES, BUDGETS, LOANS, GOALS, TAXP, TAX_CONFIG;
+
+function loadAll(){
+  META       = readKey(K.meta,       {version:SCHEMA_VERSION, lastBackup:null, created:new Date().toISOString()});
+  META       = migrate(META);
+  SETTINGS   = Object.assign({}, DEFAULT_SETTINGS, readKey(K.settings, {}));
+  EXPENSES   = readKey(K.expenses,   []);
+  CATEGORIES = readKey(K.categories, DEFAULT_CATEGORIES);
+  BUDGETS    = readKey(K.budgets,    {});
+  LOANS      = readKey(K.loans,      []);
+  GOALS      = readKey(K.goals,      []);
+  TAXP       = Object.assign({}, DEFAULT_TAXPROFILE, readKey(K.tax, {}));
+  const savedCfg = readKey(K.taxcfg, null);
+  TAX_CONFIG = savedCfg && savedCfg.meta ? savedCfg : structuredCloneSafe(TAX_CONFIG_DEFAULT);
+  if(!Array.isArray(EXPENSES)) EXPENSES = [];
+  if(!Array.isArray(CATEGORIES) || !CATEGORIES.length) CATEGORIES = structuredCloneSafe(DEFAULT_CATEGORIES);
+  if(!Array.isArray(LOANS)) LOANS = [];
+  if(!Array.isArray(GOALS)) GOALS = [];
+  if(!TAXP.fy) TAXP.fy = TAX_CONFIG.meta.defaultFY;
+  if(!TAX_CONFIG[TAXP.fy]) TAXP.fy = TAX_CONFIG.meta.defaultFY;
+}
+
+/* Schema migration hook. Every stored payload carries a version number, so a future
+   release can transform old shapes here instead of throwing the data away. */
+function migrate(meta){
+  if(!meta.version) meta.version = 1;
+  // Example of how a future migration would look:
+  // if(meta.version < 2){ ...transform EXPENSES...; meta.version = 2; }
+  meta.version = SCHEMA_VERSION;
+  return meta;
+}
+
+const save = {
+  settings(){ writeKey(K.settings, SETTINGS); },
+  expenses(){ writeKey(K.expenses, EXPENSES); updateStorageMeter(); },
+  categories(){ writeKey(K.categories, CATEGORIES); },
+  budgets(){ writeKey(K.budgets, BUDGETS); },
+  loans(){ writeKey(K.loans, LOANS); },
+  goals(){ writeKey(K.goals, GOALS); },
+  tax(){ writeKey(K.tax, TAXP); },
+  taxcfg(){ writeKey(K.taxcfg, TAX_CONFIG); },
+  meta(){ writeKey(K.meta, META); }
+};
+
+/* =====================================================================================
+   SECTION 3 — UTILITIES
+   ===================================================================================== */
+
+// Guard against NaN/Infinity ever reaching the screen.
+function n(v, fallback){ const x = Number(v); return Number.isFinite(x) ? x : (fallback||0); }
+
+/* Indian digit grouping: last three digits, then pairs.
+   12345678 -> "1,23,45,678"  (NOT "12,345,678") */
+function groupIndian(intStr){
+  if(intStr.length <= 3) return intStr;
+  const last3 = intStr.slice(-3);
+  const rest  = intStr.slice(0, -3);
+  return rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last3;
+}
+function fmtNum(v, decimals){
+  const x = n(v);
+  const d = decimals === undefined ? 0 : decimals;
+  const neg = x < 0;
+  const fixed = Math.abs(x).toFixed(d);
+  const parts = fixed.split('.');
+  const out = groupIndian(parts[0]) + (parts[1] ? '.' + parts[1] : '');
+  return (neg ? '-' : '') + out;
+}
+function inr(v, decimals){ return '₹' + fmtNum(v, decimals); }
+
+/* Friendly short form for big figures: ₹1.25 Cr, ₹45.6 L */
+function inrShort(v){
+  const x = n(v), a = Math.abs(x), s = x < 0 ? '-' : '';
+  if(a >= 10000000) return s + '₹' + (a/10000000).toFixed(2).replace(/\.00$/,'') + ' Cr';
+  if(a >= 100000)   return s + '₹' + (a/100000).toFixed(2).replace(/\.00$/,'') + ' L';
+  return inr(x);
+}
+function pct(v, d){ return n(v).toFixed(d===undefined?1:d) + '%'; }
+
+// ---- Dates -----------------------------------------------------------------------
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function today(){ return new Date(); }
+function iso(d){ const p = x => String(x).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+function parseISO(s){ const [y,m,d] = String(s).split('-').map(Number); return new Date(y, (m||1)-1, d||1); }
+function monthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function prettyDate(s){ const d = parseISO(s); return d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear(); }
+function addMonths(d, k){ const x = new Date(d.getFullYear(), d.getMonth()+k, 1); const day = Math.min(d.getDate(), new Date(x.getFullYear(), x.getMonth()+1, 0).getDate()); x.setDate(day); return x; }
+function daysInMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate(); }
+
+/* Financial year runs 1 April to 31 March. April 2025 to March 2026 is FY 2025-26. */
+function fyOf(date){
+  const y = date.getFullYear();
+  const startYear = date.getMonth() >= 3 ? y : y - 1;   // month 3 = April
+  return startYear + '-' + String((startYear+1) % 100).padStart(2,'0');
+}
+function fyRange(fyLabel){
+  const startYear = parseInt(String(fyLabel).split('-')[0], 10);
+  return { from: new Date(startYear,3,1), to: new Date(startYear+1,2,31) };
+}
+function currentFY(){ return fyOf(today()); }
+
+// ---- Small DOM helpers ------------------------------------------------------------
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+function el(tag, cls, html){ const e = document.createElement(tag); if(cls) e.className = cls; if(html !== undefined) e.innerHTML = html; return e; }
+function esc(s){ return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+let toastTimer;
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+function openModal(id){ $('#'+id).classList.add('open'); }
+function closeModal(id){ $('#'+id).classList.remove('open'); }
+
+// Inline validation: show a message under a field and mark it.
+function setErr(inputSel, errSel, msg){
+  const i = $(inputSel), e = $(errSel);
+  if(e) e.textContent = msg || '';
+  if(i) i.classList.toggle('invalid', !!msg);
+  return !msg;
+}
+
+/* Count-up animation for KPI figures. Falls back to an instant set if the user has
+   asked for reduced motion. */
+const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+const countState = new WeakMap();
+function setKPI(sel, value, formatter){
+  const node = $(sel); if(!node) return;
+  const fmt = formatter || (v => inr(v));
+  const target = n(value);
+  if(reduceMotion){ node.textContent = fmt(target); countState.set(node, target); return; }
+  const start = n(countState.get(node), 0);
+  if(start === target){ node.textContent = fmt(target); return; }
+  const t0 = performance.now(), dur = 500;
+  countState.set(node, target);
+  function step(t){
+    const p = Math.min(1, (t - t0) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    node.textContent = fmt(start + (target - start) * eased);
+    if(p < 1 && countState.get(node) === target) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function download(filename, text, mime){
+  const blob = new Blob([text], {type: mime || 'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+function csvCell(v){ const s = String(v === undefined || v === null ? '' : v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function toCSV(rows){ return rows.map(r => r.map(csvCell).join(',')).join('\n'); }
+
+// ---- Chart.js shared setup --------------------------------------------------------
+const charts = {};
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function drawChart(id, config){
+  const canvas = document.getElementById(id); if(!canvas) return;
+  if(charts[id]){ charts[id].destroy(); delete charts[id]; }
+  const ink = css('--ink'), line = css('--line'), muted = css('--muted');
+  Chart.defaults.font.family = "'Poppins',sans-serif";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = muted;
+  config.options = Object.assign({
+    responsive:true, maintainAspectRatio:false, animation:{duration: reduceMotion ? 0 : 550}
+  }, config.options || {});
+  if(config.options.scales){
+    Object.values(config.options.scales).forEach(s => {
+      s.grid = Object.assign({color:line, drawBorder:false}, s.grid||{});
+      s.ticks = Object.assign({color:muted}, s.ticks||{});
+    });
+  }
+  config.options.plugins = Object.assign({
+    legend:{labels:{color:ink, boxWidth:10, boxHeight:10, usePointStyle:true, pointStyle:'circle'}}
+  }, config.options.plugins || {});
+  charts[id] = new Chart(canvas, config);
+}
+function rupeeTick(v){ return inrShort(v); }
+
+/* =====================================================================================
+   SECTION 4 — EXPENSES
+   ===================================================================================== */
+const view = { period:'month', anchor:new Date(), sortBy:'date', sortDir:-1, page:1, perPage:12 };
+
+function catById(id){ return CATEGORIES.find(c => c.id === id) || {id:id, name:'Unknown', color:'#6E6E76', icon:'●'}; }
+
+/* Recurring expenses: an entry flagged `recurring` acts as a template. On every load we
+   fill in any months that have gone by since it was created, so reopening the file after
+   two months quietly adds the two missing rents. */
+function materialiseRecurring(){
+  const now = today();
+  let added = 0;
+  EXPENSES.filter(e => e.recurring && !e.parentId).forEach(tpl => {
+    let d = addMonths(parseISO(tpl.date), 1);
+    while(d <= now){
+      const mk = monthKey(d);
+      const exists = EXPENSES.some(e => e.parentId === tpl.id && monthKey(parseISO(e.date)) === mk);
+      if(!exists){
+        EXPENSES.push({ id:uid(), parentId:tpl.id, amount:tpl.amount, date:iso(d), category:tpl.category,
+                        mode:tpl.mode, note:tpl.note, tag:tpl.tag, recurring:false });
+        added++;
+      }
+      d = addMonths(d, 1);
+    }
+  });
+  if(added){ save.expenses(); toast(added + ' recurring ' + (added===1?'expense':'expenses') + ' added automatically.'); }
+}
+
+// Expenses that fall inside the currently selected period (month / FY / all time).
+function periodExpenses(){
+  if(view.period === 'all') return EXPENSES.slice();
+  if(view.period === 'year'){
+    const r = fyRange(fyOf(view.anchor));
+    return EXPENSES.filter(e => { const d = parseISO(e.date); return d >= r.from && d <= r.to; });
+  }
+  const mk = monthKey(view.anchor);
+  return EXPENSES.filter(e => monthKey(parseISO(e.date)) === mk);
+}
+function monthExpenses(d){ const mk = monthKey(d); return EXPENSES.filter(e => monthKey(parseISO(e.date)) === mk); }
+function sum(list){ return list.reduce((a,e) => a + n(e.amount), 0); }
+
+function fillSelect(sel, items, includeAll){
+  const s = $(sel); if(!s) return;
+  const keep = s.value;
+  s.innerHTML = '';
+  if(includeAll) s.appendChild(new Option(includeAll, ''));
+  items.forEach(it => s.appendChild(new Option(it.label, it.value)));
+  if(keep && Array.from(s.options).some(o => o.value === keep)) s.value = keep;
+}
+function refreshSelectors(){
+  const cats = CATEGORIES.map(c => ({label:c.icon+'  '+c.name, value:c.id}));
+  const modes = PAY_MODES.map(m => ({label:m, value:m}));
+  fillSelect('#exCat', cats); fillSelect('#exMode', modes);
+  fillSelect('#fCat', cats, 'All categories'); fillSelect('#fMode', modes, 'All modes');
+}
+
+// ---- Add / edit / delete ----------------------------------------------------------
+function addExpense(){
+  const amt = n($('#exAmt').value, -1);
+  if(!(amt > 0)) return void setErr('#exAmt','#errExAmt','Enter an amount greater than zero.');
+  if(amt > 100000000) return void setErr('#exAmt','#errExAmt','That looks too large. Check the figure.');
+  setErr('#exAmt','#errExAmt','');
+  const date = $('#exDate').value || iso(today());
+  EXPENSES.push({
+    id:uid(), amount:Math.round(amt*100)/100, date:date, category:$('#exCat').value || 'other',
+    mode:$('#exMode').value || 'Cash', note:$('#exNote').value.trim(), tag:$('#exTag').value.trim(),
+    recurring:$('#exRecur').checked
+  });
+  save.expenses();
+  $('#exAmt').value = ''; $('#exNote').value = ''; $('#exTag').value = ''; $('#exRecur').checked = false;
+  toast('Expense added.');
+  renderExpenses(); renderDashboard();
+}
+
+function deleteExpense(id){
+  const e = EXPENSES.find(x => x.id === id); if(!e) return;
+  if(e.recurring && !confirm('This is a recurring entry. Deleting it stops future months from being created. Continue?')) return;
+  EXPENSES = EXPENSES.filter(x => x.id !== id && x.parentId !== id);
+  save.expenses(); renderExpenses(); renderDashboard(); toast('Expense deleted.');
+}
+
+let editingId = null;
+function startEdit(id){ editingId = id; renderTable(); }
+function commitEdit(id){
+  const row = $('#row-'+id); if(!row) return;
+  const amt = n(row.querySelector('.e-amt').value, -1);
+  if(!(amt > 0)) return void toast('Amount must be greater than zero.');
+  const e = EXPENSES.find(x => x.id === id); if(!e) return;
+  e.amount = amt;
+  e.date = row.querySelector('.e-date').value || e.date;
+  e.category = row.querySelector('.e-cat').value;
+  e.mode = row.querySelector('.e-mode').value;
+  e.note = row.querySelector('.e-note').value.trim();
+  editingId = null; save.expenses(); renderExpenses(); renderDashboard(); toast('Expense updated.');
+}
+
+// ---- Filtering + sorting + pagination ---------------------------------------------
+function filteredExpenses(){
+  let list = periodExpenses();
+  const from = $('#fFrom').value, to = $('#fTo').value;
+  const cat = $('#fCat').value, mode = $('#fMode').value;
+  const q = $('#fSearch').value.trim().toLowerCase();
+  if(from) list = list.filter(e => e.date >= from);
+  if(to)   list = list.filter(e => e.date <= to);
+  if(cat)  list = list.filter(e => e.category === cat);
+  if(mode) list = list.filter(e => e.mode === mode);
+  if(q)    list = list.filter(e => (e.note||'').toLowerCase().includes(q) || (e.tag||'').toLowerCase().includes(q));
+  const key = view.sortBy;
+  list.sort((a,b) => {
+    let x = a[key], y = b[key];
+    if(key === 'category'){ x = catById(a.category).name; y = catById(b.category).name; }
+    if(key === 'amount'){ x = n(x); y = n(y); return (x-y) * view.sortDir; }
+    x = String(x||''); y = String(y||'');
+    return x.localeCompare(y) * view.sortDir;
+  });
+  return list;
+}
+
+function renderTable(){
+  const list = filteredExpenses();
+  const pages = Math.max(1, Math.ceil(list.length / view.perPage));
+  if(view.page > pages) view.page = pages;
+  const slice = list.slice((view.page-1)*view.perPage, view.page*view.perPage);
+  const body = $('#expBody'); body.innerHTML = '';
+
+  if(!slice.length){
+    body.innerHTML = '<tr><td colspan="6"><div class="empty"><b>Nothing here yet</b>Add your first expense above, or widen the filters.</div></td></tr>';
+  }
+  slice.forEach(e => {
+    const c = catById(e.category);
+    const tr = el('tr'); tr.id = 'row-'+e.id;
+    if(editingId === e.id){
+      tr.innerHTML =
+        '<td><input type="date" class="e-date" value="'+esc(e.date)+'"></td>'+
+        '<td><select class="e-cat">'+CATEGORIES.map(x=>'<option value="'+x.id+'"'+(x.id===e.category?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></td>'+
+        '<td><input type="text" class="e-note" value="'+esc(e.note)+'"></td>'+
+        '<td><select class="e-mode">'+PAY_MODES.map(m=>'<option'+(m===e.mode?' selected':'')+'>'+m+'</option>').join('')+'</select></td>'+
+        '<td class="r"><input type="number" class="e-amt num" value="'+n(e.amount)+'" style="text-align:right"></td>'+
+        '<td class="r"><button class="btn sm" data-act="commit" data-id="'+e.id+'">Save</button> '+
+        '<button class="linkbtn" data-act="cancel">Cancel</button></td>';
+    } else {
+      tr.innerHTML =
+        '<td>'+prettyDate(e.date)+(e.recurring?' <span class="pill" title="Repeats monthly">↻</span>':'')+'</td>'+
+        '<td><span class="chip" style="background:'+esc(c.color)+'22;color:'+esc(c.color)+'">'+esc(c.icon)+' '+esc(c.name)+'</span></td>'+
+        '<td>'+esc(e.note||'—')+(e.tag?' <span class="pill">'+esc(e.tag)+'</span>':'')+'</td>'+
+        '<td class="dim">'+esc(e.mode)+'</td>'+
+        '<td class="r num">'+inr(e.amount)+'</td>'+
+        '<td class="r"><button class="linkbtn" data-act="edit" data-id="'+e.id+'">Edit</button> '+
+        '<button class="linkbtn" data-act="del" data-id="'+e.id+'">Delete</button></td>';
+    }
+    body.appendChild(tr);
+  });
+
+  $('#pgInfo').textContent = 'Page '+view.page+' of '+pages+' · '+list.length+' entries';
+  $('#pgPrev').disabled = view.page <= 1;
+  $('#pgNext').disabled = view.page >= pages;
+  $('#filterTotal').textContent = 'Filtered total: ' + inr(sum(list));
+  $$('#tblExpenses th.sortable').forEach(th => {
+    const active = th.dataset.sort === view.sortBy;
+    th.style.color = active ? css('--ink') : '';
+    th.textContent = th.textContent.replace(/ [↑↓]$/,'') + (active ? (view.sortDir === 1 ? ' ↑' : ' ↓') : '');
+  });
+}
+
+// ---- Quick-add buttons for the five most-used expenses ----------------------------
+function renderQuickAdd(){
+  const box = $('#quickAdd'); box.innerHTML = '';
+  const tally = {};
+  EXPENSES.forEach(e => {
+    const key = e.category + '|' + (e.note||'') + '|' + n(e.amount);
+    tally[key] = tally[key] || {count:0, e:e};
+    tally[key].count++;
+  });
+  const top = Object.values(tally).sort((a,b) => b.count - a.count).slice(0,5);
+  if(!top.length){ box.innerHTML = '<span class="kpi-sub">Your five most repeated expenses will appear here as quick buttons once you have some history.</span>'; return; }
+  top.forEach(t => {
+    const c = catById(t.e.category);
+    const b = el('button','btn ghost sm', esc(c.icon)+' '+esc(t.e.note || c.name)+' · '+inr(t.e.amount));
+    b.onclick = () => {
+      EXPENSES.push({id:uid(), amount:n(t.e.amount), date:iso(today()), category:t.e.category,
+                     mode:t.e.mode, note:t.e.note, tag:t.e.tag, recurring:false});
+      save.expenses(); renderExpenses(); renderDashboard(); toast('Added ' + inr(t.e.amount) + '.');
+    };
+    box.appendChild(b);
+  });
+}
+
+// ---- Budgets -----------------------------------------------------------------------
+function budgetRow(cat, spent, budget){
+  const usedPct = budget > 0 ? (spent / budget) * 100 : 0;
+  const cls = usedPct > 100 ? 'over' : usedPct > 80 ? 'warn' : '';
+  const w = Math.min(100, usedPct);
+  return '<div style="margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px">'+
+      '<span>'+esc(cat.icon)+' '+esc(cat.name)+'</span>'+
+      '<span class="num '+(usedPct>100?'bad':'')+'">'+inr(spent)+' / '+inr(budget)+' · '+pct(usedPct,0)+'</span>'+
+    '</div>'+
+    '<div class="bar '+cls+'"><i style="width:'+w+'%"></i></div></div>';
+}
+function renderBudgets(){
+  const list = monthExpenses(view.anchor);
+  const box = $('#budgetList');
+  const withBudget = CATEGORIES.filter(c => n(BUDGETS[c.id]) > 0);
+  $('#budgetPeriod').textContent = MONTHS[view.anchor.getMonth()] + ' ' + view.anchor.getFullYear();
+  if(!withBudget.length){
+    box.innerHTML = '<div class="empty"><b>No budgets set</b>Open "Manage categories &amp; budgets" and give a few categories a monthly limit. Bars turn amber past 80% and rust past 100%.</div>';
+    return;
+  }
+  box.innerHTML = withBudget.map(c => {
+    const spent = sum(list.filter(e => e.category === c.id));
+    return budgetRow(c, spent, n(BUDGETS[c.id]));
+  }).join('');
+}
+
+// ---- Insight charts ---------------------------------------------------------------
+function renderExpenseCharts(){
+  const list = periodExpenses();
+
+  // Donut: spend by category
+  const byCat = {};
+  list.forEach(e => byCat[e.category] = (byCat[e.category] || 0) + n(e.amount));
+  const catIds = Object.keys(byCat).sort((a,b) => byCat[b] - byCat[a]);
+  drawChart('chCat', {
+    type:'doughnut',
+    data:{ labels: catIds.map(id => catById(id).name),
+           datasets:[{ data: catIds.map(id => byCat[id]), backgroundColor: catIds.map(id => catById(id).color), borderWidth:0 }] },
+    options:{ cutout:'62%', plugins:{ legend:{position:'right'},
+      tooltip:{callbacks:{label: c => c.label + ': ' + inr(c.parsed)}} } }
+  });
+
+  // Line: spend over time (by day for a month, by month otherwise)
+  let labels = [], data = [];
+  if(view.period === 'month'){
+    const dim = daysInMonth(view.anchor);
+    for(let d = 1; d <= dim; d++){
+      labels.push(String(d));
+      data.push(sum(list.filter(e => parseISO(e.date).getDate() === d)));
+    }
+  } else {
+    const buckets = {};
+    list.forEach(e => { const k = monthKey(parseISO(e.date)); buckets[k] = (buckets[k]||0) + n(e.amount); });
+    labels = Object.keys(buckets).sort();
+    data = labels.map(k => buckets[k]);
+    labels = labels.map(k => MONTHS[parseInt(k.split('-')[1],10)-1] + " '" + k.slice(2,4));
+  }
+  drawChart('chTime', {
+    type:'line',
+    data:{ labels, datasets:[{ label:'Spend', data, borderColor:css('--gold'), backgroundColor:css('--gold')+'33',
+           fill:true, tension:.32, pointRadius:2, borderWidth:2 }] },
+    options:{ scales:{ y:{ ticks:{callback:rupeeTick}, beginAtZero:true }, x:{} },
+              plugins:{ legend:{display:false}, tooltip:{callbacks:{label: c => inr(c.parsed.y)}} } }
+  });
+
+  // Bar: this month vs last month
+  const thisM = sum(monthExpenses(today()));
+  const lastM = sum(monthExpenses(addMonths(today(), -1)));
+  const change = lastM > 0 ? ((thisM - lastM) / lastM) * 100 : 0;
+  const chip = $('#momChip');
+  chip.textContent = lastM > 0 ? (change >= 0 ? '▲ ' : '▼ ') + pct(Math.abs(change),1) + ' vs last month' : 'No data for last month';
+  chip.className = 'chip ' + (lastM <= 0 ? 'bg-warn' : change > 0 ? 'bg-bad' : 'bg-good');
+  drawChart('chMoM', {
+    type:'bar',
+    data:{ labels:[MONTHS[addMonths(today(),-1).getMonth()], MONTHS[today().getMonth()]],
+           datasets:[{ data:[lastM, thisM], backgroundColor:[css('--muted'), css('--gold')], borderRadius:8, barThickness:56 }] },
+    options:{ scales:{ y:{ ticks:{callback:rupeeTick}, beginAtZero:true } },
+              plugins:{ legend:{display:false}, tooltip:{callbacks:{label: c => inr(c.parsed.y)}} } }
+  });
+
+  // Payment mode split
+  const byMode = {};
+  list.forEach(e => byMode[e.mode] = (byMode[e.mode] || 0) + n(e.amount));
+  const modeKeys = Object.keys(byMode);
+  drawChart('chMode', {
+    type:'polarArea',
+    data:{ labels: modeKeys,
+           datasets:[{ data: modeKeys.map(k => byMode[k]),
+             backgroundColor:[css('--gold')+'CC', css('--rust')+'CC', css('--green')+'CC', '#3B7DD8CC', '#7A5AF8CC'] }] },
+    options:{ scales:{ r:{ ticks:{display:false}, grid:{color:css('--line')} } },
+              plugins:{ legend:{position:'right'}, tooltip:{callbacks:{label: c => c.label + ': ' + inr(c.parsed.r ?? c.parsed)}} } }
+  });
+}
+
+function renderExpenseKPIs(){
+  const list = monthExpenses(today());
+  const total = sum(list);
+  const dayNow = today().getDate();
+  const dim = daysInMonth(today());
+  const avg = dayNow > 0 ? total / dayNow : 0;
+
+  setKPI('#xTotal', total);
+  $('#xTotalSub').textContent = MONTHS[today().getMonth()] + ' ' + today().getFullYear() + ' · ' + list.length + (list.length===1?' entry':' entries');
+  setKPI('#xAvg', avg);
+  setKPI('#xProj', avg * dim);
+
+  const biggest = list.slice().sort((a,b) => n(b.amount) - n(a.amount))[0];
+  setKPI('#xMax', biggest ? n(biggest.amount) : 0);
+  $('#xMaxSub').textContent = biggest ? (biggest.note || catById(biggest.category).name) + ' · ' + prettyDate(biggest.date) : 'Nothing recorded yet';
+
+  const counts = {};
+  list.forEach(e => counts[e.category] = (counts[e.category]||0) + 1);
+  const freq = Object.keys(counts).sort((a,b) => counts[b] - counts[a])[0];
+  $('#xFreq').textContent = freq ? catById(freq).icon + ' ' + catById(freq).name : '—';
+  $('#xFreqSub').textContent = freq ? counts[freq] + ' entries this month' : 'Nothing recorded yet';
+}
+
+function renderExpenses(){
+  renderQuickAdd(); renderTable(); renderBudgets(); renderExpenseCharts(); renderExpenseKPIs();
+}
+
+// ---- Category manager --------------------------------------------------------------
+function renderCatManager(){
+  const t = $('#tblCats');
+  t.innerHTML = '<thead><tr><th>Icon</th><th>Name</th><th>Colour</th><th class="r">Monthly budget (₹)</th><th></th></tr></thead><tbody>' +
+    CATEGORIES.map(c =>
+      '<tr>'+
+      '<td><input type="text" data-cat="'+c.id+'" data-f="icon" value="'+esc(c.icon)+'" style="width:52px;text-align:center"></td>'+
+      '<td><input type="text" data-cat="'+c.id+'" data-f="name" value="'+esc(c.name)+'"></td>'+
+      '<td><input type="color" data-cat="'+c.id+'" data-f="color" value="'+esc(c.color)+'" style="width:52px"></td>'+
+      '<td class="r"><input type="number" min="0" step="500" data-cat="'+c.id+'" data-f="budget" value="'+(n(BUDGETS[c.id])||'')+'" style="text-align:right"></td>'+
+      '<td class="r"><button class="linkbtn" data-delcat="'+c.id+'">Delete</button></td>'+
+      '</tr>').join('') + '</tbody>';
+
+  t.querySelectorAll('input').forEach(inp => {
+    inp.onchange = () => {
+      const c = CATEGORIES.find(x => x.id === inp.dataset.cat); if(!c) return;
+      if(inp.dataset.f === 'budget'){ BUDGETS[c.id] = Math.max(0, n(inp.value)); save.budgets(); }
+      else { c[inp.dataset.f] = inp.value || c[inp.dataset.f]; save.categories(); }
+      refreshSelectors(); renderExpenses(); renderDashboard();
+    };
+  });
+  t.querySelectorAll('[data-delcat]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.delcat;
+      const used = EXPENSES.filter(e => e.category === id).length;
+      if(CATEGORIES.length <= 1) return void toast('Keep at least one category.');
+      if(used && !confirm(used + ' expenses use this category. They will move to "Other". Continue?')) return;
+      let fallback = CATEGORIES.find(c => c.id === 'other' && c.id !== id) || CATEGORIES.find(c => c.id !== id);
+      EXPENSES.forEach(e => { if(e.category === id) e.category = fallback.id; });
+      CATEGORIES = CATEGORIES.filter(c => c.id !== id);
+      delete BUDGETS[id];
+      save.categories(); save.budgets(); save.expenses();
+      refreshSelectors(); renderCatManager(); renderExpenses(); renderDashboard();
+    };
+  });
+}
+
+/* =====================================================================================
+   SECTION 5 — LOANS & EMI
+   ===================================================================================== */
+
+/* The standard EMI formula.
+      EMI = P × r × (1+r)^n / ((1+r)^n − 1)
+   P = principal, r = MONTHLY interest rate as a fraction (annual% ÷ 12 ÷ 100),
+   n = number of monthly instalments.
+   Special case: at 0% interest the formula divides by zero, so the EMI is simply P/n. */
+function calcEMI(P, annualRatePct, months){
+  P = n(P); months = Math.max(1, Math.round(n(months)));
+  const r = n(annualRatePct) / 12 / 100;
+  if(r <= 0) return P / months;
+  const pow = Math.pow(1 + r, months);
+  const emi = P * r * pow / (pow - 1);
+  return Number.isFinite(emi) ? emi : 0;
+}
+
+/* Amortisation loop.
+   Each month: interest = outstanding × monthly rate, principal = EMI − interest,
+   then the balance falls by the principal component (plus any prepayment).
+   Prepayments here keep the EMI constant and shorten the tenure, which is how most
+   Indian lenders handle a part-payment by default. */
+function amortise(P, annualRatePct, months, opts){
+  opts = opts || {};
+  const lump = n(opts.lumpSum), lumpMonth = Math.max(1, Math.round(n(opts.lumpMonth, 1)));
+  const extra = n(opts.extraMonthly);
+  const r = n(annualRatePct) / 12 / 100;
+  const emi = calcEMI(P, annualRatePct, months);
+  let bal = n(P), totalInterest = 0, totalPaid = 0;
+  const rows = [];
+  const cap = Math.max(months, 1) + 600;          // hard stop so a bad rate can't loop forever
+  for(let m = 1; m <= cap && bal > 0.5; m++){
+    const interest = bal * r;
+    let principal = emi - interest;
+    if(principal <= 0 && extra <= 0 && !(m === lumpMonth && lump > 0)){
+      // EMI does not even cover the interest — the loan can never close.
+      return { rows:[], emi:emi, totalInterest:Infinity, totalPaid:Infinity, months:Infinity, impossible:true };
+    }
+    let prepay = extra;
+    if(m === lumpMonth) prepay += lump;
+    let payThisMonth = emi;
+    if(principal + prepay > bal){                  // final month: only pay what is left
+      principal = Math.min(principal, bal);
+      prepay = Math.max(0, bal - principal);
+      payThisMonth = principal + interest;
+    }
+    const opening = bal;
+    bal = Math.max(0, bal - principal - prepay);
+    totalInterest += interest;
+    totalPaid += payThisMonth + prepay;
+    rows.push({ month:m, opening:opening, emi:payThisMonth, principal:principal, prepay:prepay, interest:interest, closing:bal });
+  }
+  return { rows:rows, emi:emi, totalInterest:totalInterest, totalPaid:totalPaid, months:rows.length, impossible:false };
+}
+
+// Current calculator inputs, normalised to months.
+let tenureUnit = 'months';
+function loanInputs(){
+  const amount = n($('#lnAmt').value);
+  const rate = n($('#lnRate').value);
+  const rawTen = n($('#lnTen').value);
+  const months = tenureUnit === 'years' ? Math.round(rawTen * 12) : Math.round(rawTen);
+  return { amount, rate, months, rawTen };
+}
+function validateLoan(){
+  const {amount, rate, months} = loanInputs();
+  let ok = true;
+  ok = setErr('#lnAmt','#errAmt', amount > 0 ? '' : 'Loan amount must be more than zero.') && ok;
+  ok = setErr('#lnRate','#errRate', rate >= 0 && rate <= 60 ? '' : 'Enter a rate between 0% and 60%.') && ok;
+  ok = setErr('#lnTen','#errTen', months >= 1 && months <= 600 ? '' : 'Tenure must be between 1 month and 50 years.') && ok;
+  return ok;
+}
+
+function renderLoanCalc(){
+  $('#lblAmt').textContent = inrShort($('#lnAmt').value);
+  $('#lblRate').textContent = n($('#lnRate').value).toFixed(2) + '%';
+  $('#lblTen').textContent = fmtNum($('#lnTen').value) + ' ' + tenureUnit;
+  if(!validateLoan()){
+    ['#oEmi','#oInt','#oTot'].forEach(s => $(s).textContent = '—');
+    return;
+  }
+  const {amount, rate, months} = loanInputs();
+  const emi = calcEMI(amount, rate, months);
+  const totalPay = emi * months;
+  const interest = totalPay - amount;
+
+  setKPI('#oEmi', emi);
+  setKPI('#oInt', interest);
+  setKPI('#oTot', totalPay);
+  $('#oIntPct').textContent = amount > 0 ? pct(interest / amount * 100, 0) + ' of the amount borrowed' : '—';
+
+  drawChart('chPI', {
+    type:'doughnut',
+    data:{ labels:['Principal','Interest'],
+           datasets:[{ data:[amount, Math.max(0,interest)], backgroundColor:[css('--ink'), css('--rust')], borderWidth:0 }] },
+    options:{ cutout:'66%', plugins:{ legend:{position:'bottom'},
+      tooltip:{callbacks:{label: c => c.label + ': ' + inr(c.parsed)}} } }
+  });
+
+  renderPrepay();
+  renderAmort();
+}
+
+// ---- Prepayment simulator -----------------------------------------------------------
+function renderPrepay(){
+  const {amount, rate, months} = loanInputs();
+  const base = amortise(amount, rate, months);
+  const withPre = amortise(amount, rate, months, {
+    lumpSum: Math.max(0, n($('#ppLump').value)),
+    lumpMonth: Math.max(1, n($('#ppMonth').value, 1)),
+    extraMonthly: Math.max(0, n($('#ppExtra').value))
+  });
+
+  if(base.impossible || withPre.impossible){
+    $('#ppMonths').textContent = '—'; $('#ppSaved').textContent = '—'; $('#ppEnd').textContent = '—';
+    $('#ppMonthsSub').textContent = 'The EMI does not cover the monthly interest at this rate.';
+    return;
+  }
+  const saved = base.months - withPre.months;
+  const interestSaved = base.totalInterest - withPre.totalInterest;
+  const start = today();
+  const endBase = addMonths(start, base.months);
+  const endNew  = addMonths(start, withPre.months);
+
+  setKPI('#ppMonths', saved, v => fmtNum(Math.round(v)));
+  $('#ppMonthsSub').textContent = saved > 0
+    ? (Math.floor(saved/12) ? Math.floor(saved/12) + ' yr ' : '') + (saved % 12) + ' mo earlier'
+    : 'Add a prepayment above to see the effect';
+  setKPI('#ppSaved', Math.max(0, interestSaved));
+  $('#ppEnd').textContent = MONTHS[endNew.getMonth()] + ' ' + endNew.getFullYear();
+  $('#ppEndSub').textContent = 'Originally ' + MONTHS[endBase.getMonth()] + ' ' + endBase.getFullYear();
+
+  const len = Math.max(base.rows.length, withPre.rows.length);
+  const labels = Array.from({length:len}, (_,i) => i+1);
+  drawChart('chPre', {
+    type:'line',
+    data:{ labels,
+      datasets:[
+        { label:'Original plan', data: base.rows.map(r => r.closing), borderColor:css('--muted'),
+          borderDash:[5,4], pointRadius:0, borderWidth:2, tension:.1 },
+        { label:'With prepayment', data: withPre.rows.map(r => r.closing), borderColor:css('--green'),
+          backgroundColor:css('--green')+'22', fill:true, pointRadius:0, borderWidth:2.5, tension:.1 }
+      ]},
+    options:{ scales:{ y:{ ticks:{callback:rupeeTick}, beginAtZero:true, title:{display:true,text:'Outstanding balance'} },
+                       x:{ title:{display:true,text:'Month number'}, ticks:{maxTicksLimit:14} } },
+              plugins:{ tooltip:{ mode:'index', intersect:false, callbacks:{label: c => c.dataset.label + ': ' + inr(c.parsed.y)} } },
+              interaction:{ mode:'index', intersect:false } }
+  });
+}
+
+// ---- Amortisation table ---------------------------------------------------------------
+let amortMode = 'month';
+function currentSchedule(){
+  const {amount, rate, months} = loanInputs();
+  const usePre = $('#amortWithPre').checked;
+  return amortise(amount, rate, months, usePre ? {
+    lumpSum: Math.max(0, n($('#ppLump').value)),
+    lumpMonth: Math.max(1, n($('#ppMonth').value,1)),
+    extraMonthly: Math.max(0, n($('#ppExtra').value))
+  } : {});
+}
+function yearlyRollup(rows){
+  const years = [];
+  rows.forEach(r => {
+    const y = Math.ceil(r.month / 12);
+    let bucket = years[y-1];
+    if(!bucket){ bucket = years[y-1] = {year:y, opening:r.opening, principal:0, interest:0, paid:0, closing:0}; }
+    bucket.principal += r.principal + r.prepay;
+    bucket.interest  += r.interest;
+    bucket.paid      += r.emi + r.prepay;
+    bucket.closing    = r.closing;
+  });
+  return years;
+}
+function renderAmort(){
+  const s = currentSchedule();
+  const t = $('#tblAmort');
+  if(s.impossible || !s.rows.length){
+    t.innerHTML = '<tbody><tr><td><div class="empty"><b>No schedule to show</b>Check the amount, rate and tenure above.</div></td></tr></tbody>';
+    return;
+  }
+  if(amortMode === 'year'){
+    const ys = yearlyRollup(s.rows);
+    t.innerHTML = '<thead><tr><th>Year</th><th class="r">Opening</th><th class="r">Paid</th><th class="r">Principal</th><th class="r">Interest</th><th class="r">Closing</th></tr></thead><tbody>'+
+      ys.map(y => '<tr><td>Year '+y.year+'</td><td class="r num">'+inr(y.opening)+'</td><td class="r num">'+inr(y.paid)+
+        '</td><td class="r num">'+inr(y.principal)+'</td><td class="r num bad">'+inr(y.interest)+'</td><td class="r num">'+inr(y.closing)+'</td></tr>').join('')+'</tbody>';
+  } else {
+    t.innerHTML = '<thead><tr><th>Month</th><th class="r">Opening</th><th class="r">EMI</th><th class="r">Principal</th><th class="r">Interest</th><th class="r">Closing</th></tr></thead><tbody>'+
+      s.rows.map(r => '<tr><td>'+r.month+(r.prepay>0?' <span class="pill">+'+inrShort(r.prepay)+'</span>':'')+'</td>'+
+        '<td class="r num">'+inr(r.opening)+'</td><td class="r num">'+inr(r.emi)+'</td>'+
+        '<td class="r num good">'+inr(r.principal)+'</td><td class="r num bad">'+inr(r.interest)+'</td>'+
+        '<td class="r num">'+inr(r.closing)+'</td></tr>').join('')+'</tbody>';
+  }
+}
+function downloadAmortCSV(){
+  const s = currentSchedule();
+  if(!s.rows.length) return void toast('Nothing to download yet.');
+  const rows = [['Month','Opening balance','EMI','Principal','Prepayment','Interest','Closing balance']];
+  s.rows.forEach(r => rows.push([r.month, r.opening.toFixed(2), r.emi.toFixed(2), r.principal.toFixed(2),
+                                 r.prepay.toFixed(2), r.interest.toFixed(2), r.closing.toFixed(2)]));
+  download('moneydesk-amortisation-'+iso(today())+'.csv', toCSV(rows), 'text/csv;charset=utf-8');
+}
+
+// ---- Saved loans ------------------------------------------------------------------------
+/* For a saved loan we work out how many EMIs have already been paid from the start date,
+   then read the outstanding balance straight off the amortisation schedule. */
+function loanStatus(loan){
+  const s = amortise(loan.amount, loan.rate, loan.months);
+  const start = parseISO(loan.start);
+  const now = today();
+  let paid = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  if(now.getDate() >= start.getDate()) paid += 1;
+  paid = Math.max(0, Math.min(paid, s.rows.length));
+  const row = paid > 0 ? s.rows[paid-1] : null;
+  const outstanding = row ? row.closing : n(loan.amount);
+  return { paid, remaining: Math.max(0, s.rows.length - paid), outstanding,
+           principalRepaid: n(loan.amount) - outstanding, emi: s.emi, total: s.rows.length,
+           totalInterest: s.totalInterest };
+}
+function renderLoans(){
+  const box = $('#loanCards'); box.innerHTML = '';
+  if(!LOANS.length){
+    box.innerHTML = '<div class="empty" style="grid-column:1/-1"><b>No loans saved</b>Set the numbers in the calculator above and press "Save this as a loan" to track it here.</div>';
+    $('#loanSummary').textContent = '';
+  } else {
+    let totalOut = 0, totalEmi = 0;
+    LOANS.forEach(l => {
+      const st = loanStatus(l);
+      totalOut += st.outstanding; if(st.remaining > 0) totalEmi += st.emi;
+      const progress = l.amount > 0 ? (st.principalRepaid / l.amount) * 100 : 0;
+      const card = el('div','card');
+      card.innerHTML =
+        '<div class="card-h"><h3>'+esc(l.name)+'</h3><span class="pill">'+esc(l.type)+'</span></div>'+
+        '<div class="kpi-value" style="font-size:22px">'+inr(st.outstanding)+'</div>'+
+        '<div class="kpi-sub">outstanding as of today</div>'+
+        '<div class="bar '+(progress>=100?'':'')+'" style="margin:12px 0 6px"><i style="width:'+Math.min(100,Math.max(0,progress))+'%"></i></div>'+
+        '<div class="kpi-sub">'+pct(progress,1)+' of the principal repaid</div>'+
+        '<table style="margin-top:12px"><tbody>'+
+          '<tr><td class="dim">EMI</td><td class="r num">'+inr(st.emi)+'</td></tr>'+
+          '<tr><td class="dim">EMIs paid</td><td class="r num">'+st.paid+' of '+st.total+'</td></tr>'+
+          '<tr><td class="dim">EMIs remaining</td><td class="r num">'+st.remaining+'</td></tr>'+
+          '<tr><td class="dim">Principal repaid</td><td class="r num good">'+inr(st.principalRepaid)+'</td></tr>'+
+        '</tbody></table>'+
+        '<div style="display:flex;gap:8px;margin-top:12px">'+
+          '<button class="btn ghost sm" data-loadloan="'+l.id+'">Load into calculator</button>'+
+          '<button class="linkbtn" data-delloan="'+l.id+'">Delete</button></div>';
+      box.appendChild(card);
+    });
+    $('#loanSummary').textContent = LOANS.length + (LOANS.length===1?' loan · ':' loans · ') + inr(totalOut) + ' outstanding · ' + inr(totalEmi) + ' a month';
+    box.querySelectorAll('[data-loadloan]').forEach(b => b.onclick = () => {
+      const l = LOANS.find(x => x.id === b.dataset.loadloan); if(!l) return;
+      tenureUnit = 'months'; syncSeg('#segTenure','unit','months');
+      $('#lblTenUnit').textContent = 'months'; $('#rgTen').max = 360;
+      $('#lnAmt').value = l.amount; $('#rgAmt').value = Math.min(30000000, l.amount);
+      $('#lnRate').value = l.rate; $('#rgRate').value = Math.min(30, l.rate);
+      $('#lnTen').value = l.months; $('#rgTen').value = Math.min(360, l.months);
+      renderLoanCalc(); toast('Loaded ' + l.name + '.');
+    });
+    box.querySelectorAll('[data-delloan]').forEach(b => b.onclick = () => {
+      if(!confirm('Delete this loan?')) return;
+      LOANS = LOANS.filter(x => x.id !== b.dataset.delloan);
+      save.loans(); renderLoans(); renderCompare(); renderDashboard();
+    });
+  }
+  renderCompare();
+}
+
+// ---- Loan comparison ---------------------------------------------------------------------
+let cmpSelection = [];
+function renderCompare(){
+  const picker = $('#cmpPicker'); picker.innerHTML = '';
+  if(LOANS.length < 2){
+    picker.innerHTML = '<span class="kpi-sub">Save at least two loans to compare them side by side.</span>';
+    $('#tblCompare').innerHTML = '';
+    return;
+  }
+  LOANS.forEach(l => {
+    const lab = el('label','', '');
+    lab.style.cssText = 'display:flex;gap:7px;align-items:center;font-size:12.5px;cursor:pointer';
+    const cb = el('input'); cb.type = 'checkbox'; cb.checked = cmpSelection.includes(l.id);
+    cb.onchange = () => {
+      if(cb.checked){ if(cmpSelection.length >= 3){ cb.checked = false; return void toast('Compare up to three at a time.'); } cmpSelection.push(l.id); }
+      else cmpSelection = cmpSelection.filter(x => x !== l.id);
+      renderCompare();
+    };
+    lab.appendChild(cb); lab.appendChild(document.createTextNode(l.name));
+    picker.appendChild(lab);
+  });
+  const chosen = LOANS.filter(l => cmpSelection.includes(l.id));
+  const t = $('#tblCompare');
+  if(chosen.length < 2){ t.innerHTML = '<tbody><tr><td><div class="empty">Tick two or three loans above.</div></td></tr></tbody>'; return; }
+  const metrics = [
+    ['Loan amount',      l => inr(l.amount)],
+    ['Interest rate',    l => n(l.rate).toFixed(2) + '%'],
+    ['Tenure',           l => l.months + ' months'],
+    ['Monthly EMI',      l => inr(calcEMI(l.amount, l.rate, l.months))],
+    ['Total interest',   l => inr(amortise(l.amount,l.rate,l.months).totalInterest)],
+    ['Total payable',    l => inr(calcEMI(l.amount,l.rate,l.months) * l.months)],
+    ['Interest as % of principal', l => pct(amortise(l.amount,l.rate,l.months).totalInterest / Math.max(1,l.amount) * 100, 0)]
+  ];
+  t.innerHTML = '<thead><tr><th></th>'+chosen.map(l => '<th class="r">'+esc(l.name)+'</th>').join('')+'</tr></thead><tbody>'+
+    metrics.map(m => '<tr><td class="dim">'+m[0]+'</td>'+chosen.map(l => '<td class="r num">'+m[1](l)+'</td>').join('')+'</tr>').join('')+
+    '</tbody>';
+}
+
+/* =====================================================================================
+   SECTION 6 — INCOME TAX ENGINE
+   Every figure below is read from TAX_CONFIG. Nothing is hard-coded.
+   ===================================================================================== */
+
+/* Walk the slabs bottom-up and tax only the income that falls inside each band. */
+function slabTax(income, slabs){
+  const inc = Math.max(0, n(income));
+  let lower = 0, total = 0;
+  const rows = [];
+  for(const s of slabs){
+    const upper = (s.upto === null || s.upto === undefined) ? Infinity : s.upto;
+    // Only the income sitting between this slab's floor and ceiling is taxed at its rate.
+    const band = Math.max(0, Math.min(inc, upper) - lower);
+    if(band > 0){
+      const tax = band * s.rate;
+      rows.push({ from:lower, to:upper, rate:s.rate, amount:band, tax:tax });
+      total += tax;
+    }
+    lower = upper;
+    if(inc <= upper) break;
+  }
+  return { total: total, rows: rows };
+}
+
+/* Surcharge with marginal relief.
+   Marginal relief caps the extra tax so that crossing a threshold by ₹1 never costs
+   more than ₹1 of additional income. */
+function applySurcharge(taxAfterRebate, totalIncome, surchargeBands, slabs, rebateFn){
+  let rate = 0, threshold = 0;
+  (surchargeBands || []).forEach(b => { if(totalIncome > b.above && b.rate > rate){ rate = b.rate; threshold = b.above; } });
+  if(rate === 0) return { surcharge:0, rate:0, relief:0 };
+  let surcharge = taxAfterRebate * rate;
+  // Tax that would have been payable exactly at the threshold (no surcharge there).
+  const atThreshold = rebateFn(slabTax(threshold, slabs).total, threshold);
+  const excessIncome = totalIncome - threshold;
+  const relief = Math.max(0, (taxAfterRebate + surcharge) - (atThreshold + excessIncome));
+  surcharge = Math.max(0, surcharge - relief);
+  return { surcharge: surcharge, rate: rate, relief: relief };
+}
+
+/* Section 87A rebate, including the marginal relief the new regime carries: just past
+   the rebate ceiling the tax cannot exceed the income earned beyond that ceiling. */
+function makeRebateFn(cfg){
+  return function(tax, totalIncome){
+    const r = cfg.rebate87A || {};
+    if(!r.incomeLimit) return tax;
+    if(totalIncome <= r.incomeLimit) return Math.max(0, tax - Math.min(tax, r.maxRebate));
+    if(r.marginalRelief){
+      const excess = totalIncome - r.incomeLimit;
+      return Math.min(tax, excess);
+    }
+    return tax;
+  };
+}
+
+/* Full computation for one regime.
+   Order of operations, as the Act requires:
+     1. slab tax on total income
+     2. Section 87A rebate
+     3. surcharge (with marginal relief)
+     4. health & education cess on (tax + surcharge)                                  */
+function computeRegime(regime, inputs){
+  const fy = TAX_CONFIG[inputs.fy];
+  const cfg = regime === 'old' ? fy.old : fy.new;
+  const L = cfg.limits || {};
+  const senior = inputs.age !== 'below60';
+
+  let salaryIncome = Math.max(0, n(inputs.gross) - n(cfg.standardDeduction));
+  let hraExempt = 0, deductions = 0;
+  const applied = [];
+
+  if(regime === 'old'){
+    hraExempt = hraExemption(inputs);
+    salaryIncome = Math.max(0, salaryIncome - hraExempt - n(inputs.dPT));
+    if(hraExempt > 0) applied.push(['HRA exemption', hraExempt]);
+    if(n(inputs.dPT) > 0) applied.push(['Professional tax', n(inputs.dPT)]);
+    const c80C = Math.min(n(inputs.d80C), L.c80C);
+    const c1B  = Math.min(n(inputs.d80CCD1B), L.c80CCD1B);
+    const dSelf = Math.min(n(inputs.d80Dself), senior ? L.c80D_self_senior : L.c80D_self);
+    const dPar  = Math.min(n(inputs.d80Dpar), inputs.d80Dpar60 === 'yes' ? L.c80D_parents_senior : L.c80D_parents);
+    const dTT   = Math.min(n(inputs.d80TT), senior ? L.c80TTB : L.c80TTA);
+    const d24   = Math.min(n(inputs.d24b), L.c24b);
+    const dE    = n(inputs.d80E), dG = n(inputs.d80G);
+    deductions = c80C + c1B + dSelf + dPar + dTT + dE + dG;
+    applied.push(['Standard deduction', cfg.standardDeduction], ['Section 80C', c80C], ['80CCD(1B) NPS', c1B],
+                 ['80D self & family', dSelf], ['80D parents', dPar], ['80TTA/80TTB', dTT],
+                 ['80E education loan', dE], ['80G donations', dG], ['Section 24(b)', d24]);
+    // Section 24(b) reduces house property income; the loss set-off is capped.
+    var hp = n(inputs.hp) - d24;
+    hp = hp < 0 ? Math.max(hp, -n(L.housePropertyLossCap)) : hp;
+  } else {
+    applied.push(['Standard deduction', cfg.standardDeduction]);
+    const npsCap = n(inputs.hBasic) > 0 ? n(inputs.hBasic) * n(L.employerNPSpctOfBasic) : n(inputs.nNPS);
+    const nps = Math.min(n(inputs.nNPS), npsCap);
+    deductions = nps;
+    if(nps > 0) applied.push(["Employer NPS 80CCD(2)", nps]);
+    // No set-off of a house property loss against salary in the new regime.
+    var hp = Math.max(0, n(inputs.hp));
+  }
+
+  const grossTotal = salaryIncome + Math.max(0, n(inputs.other)) + hp + Math.max(0, n(inputs.cg));
+  const totalIncome = Math.max(0, Math.round(grossTotal - deductions));
+
+  const slabs = regime === 'old' ? fy.old.slabs[inputs.age] : fy.new.slabs;
+  const st = slabTax(totalIncome, slabs);
+  const rebateFn = makeRebateFn(cfg);
+  const afterRebate = rebateFn(st.total, totalIncome);
+  const rebate = st.total - afterRebate;
+  const sur = applySurcharge(afterRebate, totalIncome, cfg.surcharge, slabs, rebateFn);
+  const cess = (afterRebate + sur.surcharge) * n(fy.cess);
+  const finalTax = Math.max(0, Math.round(afterRebate + sur.surcharge + cess));
+
+  return {
+    regime, totalIncome, deductions, hraExempt, applied: applied.filter(a => a[1] > 0),
+    slabTax: st.total, slabRows: st.rows, rebate, surcharge: sur.surcharge, surchargeRate: sur.rate,
+    marginalRelief: sur.relief, cess, finalTax
+  };
+}
+
+/* HRA exemption = least of:
+     (a) actual HRA received
+     (b) rent paid minus 10% of basic salary
+     (c) 50% of basic in a metro, 40% elsewhere                                      */
+function hraExemption(i){
+  const basic = n(i.hBasic), recv = n(i.hRecv), rent = n(i.hRent);
+  if(basic <= 0 || recv <= 0 || rent <= 0) return 0;
+  const a = recv;
+  const b = Math.max(0, rent - 0.10 * basic);
+  const c = basic * (i.hMetro === 'metro' ? 0.50 : 0.40);
+  return Math.max(0, Math.min(a, b, c));
+}
+
+function taxInputsFromForm(){
+  return {
+    fy: TAXP.fy, age: TAXP.age,
+    gross:n($('#tGross').value), other:n($('#tOther').value), hp:n($('#tHP').value), cg:n($('#tCG').value),
+    d80C:n($('#d80C').value), d80CCD1B:n($('#d80CCD1B').value), d80Dself:n($('#d80Dself').value),
+    d80Dpar:n($('#d80Dpar').value), d80Dpar60:$('#d80Dpar60').value, d80E:n($('#d80E').value),
+    d80G:n($('#d80G').value), d80TT:n($('#d80TT').value), d24b:n($('#d24b').value), dPT:n($('#dPT').value),
+    hBasic:n($('#hBasic').value), hRecv:n($('#hRecv').value), hRent:n($('#hRent').value), hMetro:$('#hMetro').value,
+    nNPS:n($('#nNPS').value)
+  };
+}
+function persistTaxForm(){
+  Object.assign(TAXP, taxInputsFromForm());
+  TAXP.fy = $('#taxFY').value; TAXP.age = $('#taxAge').value;
+  save.tax();
+}
+
+function slabTableHTML(res){
+  if(!res.slabRows.length) return '<tbody><tr><td><div class="empty">No taxable income in any slab.</div></td></tr></tbody>';
+  return '<thead><tr><th>Slab</th><th class="r">Rate</th><th class="r">Income in slab</th><th class="r">Tax</th></tr></thead><tbody>'+
+    res.slabRows.map(r => '<tr><td>'+inrShort(r.from)+' – '+(Number.isFinite(r.to)?inrShort(r.to):'above')+'</td>'+
+      '<td class="r num">'+(r.rate*100).toFixed(0)+'%</td><td class="r num">'+inr(r.amount)+'</td>'+
+      '<td class="r num">'+inr(r.tax)+'</td></tr>').join('')+
+    '<tr><td colspan="3" class="dim">Tax before rebate</td><td class="r num">'+inr(res.slabTax)+'</td></tr>'+
+    (res.rebate>0?'<tr><td colspan="3" class="dim">Less: Section 87A rebate</td><td class="r num good">−'+inr(res.rebate)+'</td></tr>':'')+
+    (res.surcharge>0?'<tr><td colspan="3" class="dim">Add: surcharge at '+(res.surchargeRate*100).toFixed(0)+'%'+(res.marginalRelief>0?' (after marginal relief of '+inr(res.marginalRelief)+')':'')+'</td><td class="r num bad">+'+inr(res.surcharge)+'</td></tr>':'')+
+    '<tr><td colspan="3" class="dim">Add: health &amp; education cess</td><td class="r num bad">+'+inr(res.cess)+'</td></tr>'+
+    '<tr><td colspan="3"><b>Total tax</b></td><td class="r num"><b>'+inr(res.finalTax)+'</b></td></tr></tbody>';
+}
+
+function regimeCardHTML(res, title, isBetter){
+  return '<div class="kpi '+(isBetter?'acc-green':'acc-ink')+'" style="padding:18px">'+
+    '<div class="card-h" style="margin-bottom:8px"><h3>'+title+'</h3>'+(isBetter?'<span class="chip bg-good">Cheaper for you</span>':'')+'</div>'+
+    '<div class="kpi-value" style="font-size:30px">'+inr(res.finalTax)+'</div>'+
+    '<div class="kpi-sub">payable for the year</div>'+
+    '<table style="margin-top:14px"><tbody>'+
+      '<tr><td class="dim">Taxable income</td><td class="r num">'+inr(res.totalIncome)+'</td></tr>'+
+      '<tr><td class="dim">Deductions used</td><td class="r num good">'+inr(res.deductions + (res.hraExempt||0))+'</td></tr>'+
+      '<tr><td class="dim">Tax before cess</td><td class="r num">'+inr(res.slabTax - res.rebate + res.surcharge)+'</td></tr>'+
+      '<tr><td class="dim">Cess</td><td class="r num">'+inr(res.cess)+'</td></tr>'+
+    '</tbody></table></div>';
+}
+
+function renderTax(){
+  const fy = TAX_CONFIG[TAXP.fy];
+  if(!fy){ toast('That financial year is not configured.'); return; }
+  $('#fyPill').textContent = fy.label;
+
+  const gross = n($('#tGross').value);
+  if(gross < 0 || gross > 1000000000){ setErr('#tGross','#errGross','Enter a salary between ₹0 and ₹100 Cr.'); return; }
+  setErr('#tGross','#errGross','');
+
+  const inputs = taxInputsFromForm();
+  const oldR = computeRegime('old', inputs);
+  const newR = computeRegime('new', inputs);
+
+  // HRA panel
+  const hra = hraExemption(inputs);
+  $('#hraOut').textContent = inr(hra) + ' exempt';
+  const basic = n(inputs.hBasic);
+  $('#hraBreak').innerHTML = basic > 0
+    ? '<table><tbody>'+
+      '<tr><td class="dim">HRA actually received</td><td class="r num">'+inr(inputs.hRecv)+'</td></tr>'+
+      '<tr><td class="dim">Rent paid minus 10% of basic</td><td class="r num">'+inr(Math.max(0, n(inputs.hRent) - 0.1*basic))+'</td></tr>'+
+      '<tr><td class="dim">'+(inputs.hMetro==='metro'?'50':'40')+'% of basic salary</td><td class="r num">'+inr(basic*(inputs.hMetro==='metro'?0.5:0.4))+'</td></tr>'+
+      '<tr><td><b>Exemption is the lowest of the three</b></td><td class="r num good"><b>'+inr(hra)+'</b></td></tr>'+
+      '</tbody></table>'
+    : '<div class="note">Enter your basic salary, HRA received and rent paid to see the exemption. It only applies under the old regime.</div>';
+
+  // Side-by-side comparison
+  const betterIsNew = newR.finalTax <= oldR.finalTax;
+  const saving = Math.abs(oldR.finalTax - newR.finalTax);
+  $('#regimeCards').innerHTML = regimeCardHTML(oldR,'Old regime',!betterIsNew) + regimeCardHTML(newR,'New regime',betterIsNew);
+  const verdict = $('#regimeVerdict');
+  verdict.textContent = saving === 0
+    ? 'Both regimes cost the same'
+    : 'The ' + (betterIsNew ? 'new' : 'old') + ' regime saves you ' + inr(saving);
+  verdict.className = 'chip bg-good';
+
+  const best = betterIsNew ? newR : oldR;
+  const grossAll = gross + Math.max(0,n(inputs.other)) + Math.max(0,n(inputs.cg)) + n(inputs.hp);
+  const eff = grossAll > 0 ? (best.finalTax / grossAll) * 100 : 0;
+
+  // Marginal rate: what the next ₹10,000 of salary actually costs in tax.
+  const bump = Object.assign({}, inputs, {gross: gross + 10000});
+  const bumped = computeRegime(betterIsNew ? 'new' : 'old', bump).finalTax;
+  const marginal = ((bumped - best.finalTax) / 10000) * 100;
+
+  setKPI('#tEff', eff, v => pct(v,2));
+  setKPI('#tMarg', Math.max(0, marginal), v => pct(v,1));
+  setKPI('#tTds', best.finalTax / 12);
+  setKPI('#tNet', Math.max(0, (gross - best.finalTax) / 12));
+
+  $('#tblSlabOld').innerHTML = slabTableHTML(oldR);
+  $('#tblSlabNew').innerHTML = slabTableHTML(newR);
+
+  renderWhatIf(inputs, newR.finalTax);
+  persistTaxForm();
+  renderDashboard();
+}
+
+/* "What if I invest more?" — sweep the 80C amount and plot old-regime tax against the
+   flat new-regime line, so the crossover point is visible. */
+function renderWhatIf(inputs, newTax){
+  const cap = n(TAX_CONFIG[TAXP.fy].old.limits.c80C);
+  const slider = $('#wiSlider');
+  slider.max = cap;
+  const chosen = Math.min(n(slider.value), cap);
+  $('#wiVal').textContent = inr(chosen);
+
+  const steps = 16, labels = [], oldLine = [], newLine = [];
+  let breakEven = null;
+  for(let i = 0; i <= steps; i++){
+    const amt = Math.round((cap / steps) * i);
+    const t = computeRegime('old', Object.assign({}, inputs, {d80C: amt})).finalTax;
+    labels.push(inrShort(amt)); oldLine.push(t); newLine.push(newTax);
+    if(breakEven === null && t <= newTax) breakEven = amt;
+  }
+  drawChart('chWhatIf', {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'Old regime tax', data:oldLine, borderColor:css('--gold'), backgroundColor:css('--gold')+'22', fill:true, tension:.25, pointRadius:0, borderWidth:2.5 },
+      { label:'New regime tax', data:newLine, borderColor:css('--rust'), borderDash:[5,4], pointRadius:0, borderWidth:2 }
+    ]},
+    options:{ scales:{ y:{ ticks:{callback:rupeeTick}, beginAtZero:true }, x:{ ticks:{maxTicksLimit:6} } },
+              plugins:{ tooltip:{ mode:'index', intersect:false, callbacks:{label: c => c.dataset.label + ': ' + inr(c.parsed.y)} } } }
+  });
+
+  const atChosen = computeRegime('old', Object.assign({}, inputs, {d80C: chosen})).finalTax;
+  $('#wiNote').innerHTML = breakEven === null
+    ? 'Even at the full 80C limit the old regime stays costlier here, so the new regime wins outright.'
+    : 'At ' + inr(chosen) + ' of 80C your old-regime tax is <b>' + inr(atChosen) + '</b>. The old regime overtakes the new one once 80C reaches about <b>' + inr(breakEven) + '</b>.';
+}
+
+// ---- Editable tax settings panel -------------------------------------------------------
+function renderTaxEditor(){
+  const fyKey = TAXP.fy, fy = TAX_CONFIG[fyKey];
+  const box = $('#taxEditor');
+  const slabRows = (arr, path) => arr.map((s,i) =>
+    '<tr><td><input type="number" data-path="'+path+'.'+i+'.upto" value="'+(s.upto===null?'':s.upto)+'" placeholder="no ceiling"></td>'+
+    '<td class="r"><input type="number" step="0.5" data-path="'+path+'.'+i+'.ratePct" value="'+(s.rate*100)+'" style="text-align:right"></td></tr>').join('');
+
+  box.innerHTML =
+    '<div class="note">Editing <b>'+esc(fy.label)+'</b>. Leave the top slab ceiling blank to mean "and above". Rates are percentages.</div>'+
+    '<div class="grid g2" style="margin-top:14px">'+
+      '<div><h3 style="margin-bottom:8px">Old regime slabs ('+esc($('#taxAge').options[$('#taxAge').selectedIndex].text)+')</h3>'+
+        '<div class="tablewrap"><table><thead><tr><th>Up to (₹)</th><th class="r">Rate (%)</th></tr></thead><tbody>'+
+        slabRows(fy.old.slabs[TAXP.age], 'old.slabs.'+TAXP.age)+'</tbody></table></div></div>'+
+      '<div><h3 style="margin-bottom:8px">New regime slabs</h3>'+
+        '<div class="tablewrap"><table><thead><tr><th>Up to (₹)</th><th class="r">Rate (%)</th></tr></thead><tbody>'+
+        slabRows(fy.new.slabs, 'new.slabs')+'</tbody></table></div></div>'+
+    '</div>'+
+    '<div class="grid g3" style="margin-top:16px">'+
+      numField('Cess (%)','cess.pct', fy.cess*100, .5)+
+      numField('Old — standard deduction','old.standardDeduction', fy.old.standardDeduction, 1000)+
+      numField('New — standard deduction','new.standardDeduction', fy.new.standardDeduction, 1000)+
+      numField('Old — 87A income limit','old.rebate87A.incomeLimit', fy.old.rebate87A.incomeLimit, 10000)+
+      numField('Old — 87A max rebate','old.rebate87A.maxRebate', fy.old.rebate87A.maxRebate, 500)+
+      numField('New — 87A income limit','new.rebate87A.incomeLimit', fy.new.rebate87A.incomeLimit, 10000)+
+      numField('New — 87A max rebate','new.rebate87A.maxRebate', fy.new.rebate87A.maxRebate, 500)+
+      numField('80C limit','old.limits.c80C', fy.old.limits.c80C, 5000)+
+      numField('80CCD(1B) limit','old.limits.c80CCD1B', fy.old.limits.c80CCD1B, 5000)+
+      numField('80D self','old.limits.c80D_self', fy.old.limits.c80D_self, 1000)+
+      numField('80D self (60+)','old.limits.c80D_self_senior', fy.old.limits.c80D_self_senior, 1000)+
+      numField('80D parents','old.limits.c80D_parents', fy.old.limits.c80D_parents, 1000)+
+      numField('80D parents (60+)','old.limits.c80D_parents_senior', fy.old.limits.c80D_parents_senior, 1000)+
+      numField('80TTA limit','old.limits.c80TTA', fy.old.limits.c80TTA, 1000)+
+      numField('80TTB limit','old.limits.c80TTB', fy.old.limits.c80TTB, 1000)+
+      numField('Section 24(b) limit','old.limits.c24b', fy.old.limits.c24b, 10000)+
+      numField('House property loss cap','old.limits.housePropertyLossCap', fy.old.limits.housePropertyLossCap, 10000)+
+    '</div>';
+}
+function numField(label, path, value, step){
+  return '<div class="field"><label>'+esc(label)+'</label><input type="number" step="'+step+'" data-path="'+path+'" value="'+n(value)+'"></div>';
+}
+function saveTaxEditor(){
+  const fy = TAX_CONFIG[TAXP.fy];
+  $$('#taxEditor input[data-path]').forEach(inp => {
+    const parts = inp.dataset.path.split('.');
+    const raw = inp.value.trim();
+    if(parts[0] === 'cess'){ fy.cess = n(raw) / 100; return; }
+    let ref = fy;
+    for(let i = 0; i < parts.length - 1; i++) ref = ref[parts[i]];
+    const last = parts[parts.length-1];
+    if(last === 'ratePct'){ ref.rate = n(raw) / 100; }
+    else if(last === 'upto'){ ref.upto = raw === '' ? null : n(raw); }
+    else { ref[last] = n(raw); }
+  });
+  // Keep slabs in ascending order so the engine walks them correctly.
+  const sortSlabs = a => a.sort((x,y) => (x.upto===null?Infinity:x.upto) - (y.upto===null?Infinity:y.upto));
+  Object.values(fy.old.slabs).forEach(sortSlabs); sortSlabs(fy.new.slabs);
+  save.taxcfg(); renderTax(); renderTaxEditor(); toast('Tax settings saved.');
+}
+
+/* =====================================================================================
+   SECTION 7 — GOALS & INVESTMENTS
+   ===================================================================================== */
+
+/* SIP future value, contributions at the start of each month:
+      FV = P × [((1+i)^n − 1) / i] × (1+i)      i = monthly rate, n = months */
+function sipFV(monthly, annualPct, months){
+  const i = n(annualPct) / 12 / 100, P = n(monthly), m = Math.max(0, Math.round(n(months)));
+  if(i <= 0) return P * m;
+  const fv = P * ((Math.pow(1+i, m) - 1) / i) * (1+i);
+  return Number.isFinite(fv) ? fv : 0;
+}
+/* Reverse of the above: the monthly SIP needed to land on a target. */
+function sipRequired(target, annualPct, months){
+  const i = n(annualPct) / 12 / 100, m = Math.max(1, Math.round(n(months)));
+  if(i <= 0) return n(target) / m;
+  const req = n(target) * i / ((Math.pow(1+i, m) - 1) * (1+i));
+  return Number.isFinite(req) ? Math.max(0, req) : 0;
+}
+function lumpFV(amount, annualPct, years){
+  const fv = n(amount) * Math.pow(1 + n(annualPct)/100, Math.max(0, n(years)));
+  return Number.isFinite(fv) ? fv : 0;
+}
+
+function renderSIP(){
+  const amt = Math.max(0, n($('#sipAmt').value));
+  const rate = Math.min(50, Math.max(0, n($('#sipRate').value)));
+  const yrs = Math.min(50, Math.max(1, n($('#sipYrs').value, 1)));
+  const months = yrs * 12;
+  const mat = sipFV(amt, rate, months);
+  const inv = amt * months;
+  setKPI('#sipMat', mat, inrShort); setKPI('#sipInv', inv, inrShort); setKPI('#sipGain', Math.max(0, mat - inv), inrShort);
+
+  const labels = [], invested = [], value = [];
+  for(let y = 1; y <= yrs; y++){ labels.push('Yr '+y); invested.push(amt*y*12); value.push(sipFV(amt, rate, y*12)); }
+  drawChart('chSip', {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'Value', data:value, borderColor:css('--green'), backgroundColor:css('--green')+'2E', fill:true, tension:.3, pointRadius:0, borderWidth:2.5 },
+      { label:'Invested', data:invested, borderColor:css('--ink'), backgroundColor:css('--ink')+'14', fill:true, tension:.3, pointRadius:0, borderWidth:2 }
+    ]},
+    options:{ scales:{ y:{ ticks:{callback:rupeeTick}, beginAtZero:true } },
+              plugins:{ tooltip:{ mode:'index', intersect:false, callbacks:{label: c => c.dataset.label + ': ' + inr(c.parsed.y)} } } }
+  });
+}
+function renderLumpsum(){
+  const amt = Math.max(0, n($('#lsAmt').value));
+  const rate = Math.min(50, Math.max(0, n($('#lsRate').value)));
+  const yrs = Math.min(50, Math.max(1, n($('#lsYrs').value, 1)));
+  const mat = lumpFV(amt, rate, yrs);
+  setKPI('#lsMat', mat, inrShort); setKPI('#lsInv', amt, inrShort); setKPI('#lsGain', Math.max(0, mat - amt), inrShort);
+}
+function renderGoalPlanner(){
+  const target = Math.max(0, n($('#gpTarget').value));
+  const rate = Math.max(0, n($('#gpRate').value));
+  const infl = Math.max(0, n($('#gpInfl').value));
+  const dateStr = $('#gpDate').value;
+  const end = dateStr ? parseISO(dateStr) : addMonths(today(), 60);
+  let months = (end.getFullYear() - today().getFullYear()) * 12 + (end.getMonth() - today().getMonth());
+  months = Math.max(1, months);
+  const years = months / 12;
+  const inflated = target * Math.pow(1 + infl/100, years);
+  const sip = sipRequired(inflated, rate, months);
+  setKPI('#gpSip', sip); setKPI('#gpInflated', inflated, inrShort);
+  $('#gpSipSub').textContent = 'for ' + months + ' months at ' + rate + '% a year';
+  $('#gpYears').textContent = years.toFixed(1) + ' years away · inflation ' + infl + '%';
+  return {target, inflated, sip, months, rate};
+}
+/* Retirement: inflate today's expense to the retirement date, then size a corpus that
+   can fund 25 years of rising expenses while still earning a post-retirement return. */
+function renderRetirement(){
+  const age = Math.max(18, n($('#rAge').value, 30));
+  const ret = Math.max(age + 1, n($('#rRet').value, 60));
+  const exp = Math.max(0, n($('#rExp').value));
+  const infl = Math.max(0, n($('#rInfl').value));
+  const rate = Math.max(0, n($('#rRate').value));
+  const years = ret - age;
+  const POST_RETURN = 7, DRAW_YEARS = 25;
+
+  const futureMonthly = exp * Math.pow(1 + infl/100, years);
+  // Real (inflation-adjusted) return during retirement.
+  const real = (1 + POST_RETURN/100) / (1 + infl/100) - 1;
+  const annualNeed = futureMonthly * 12;
+  const corpus = Math.abs(real) < 0.0001
+    ? annualNeed * DRAW_YEARS
+    : annualNeed * (1 - Math.pow(1 + real, -DRAW_YEARS)) / real;
+  const sip = sipRequired(corpus, rate, years * 12);
+
+  setKPI('#rCorpus', corpus, inrShort);
+  $('#rCorpusSub').textContent = 'to fund ' + DRAW_YEARS + ' years from age ' + ret;
+  setKPI('#rExpFut', futureMonthly, inrShort);
+  setKPI('#rSip', sip);
+  $('#rSipSub').textContent = 'for ' + years + ' years at ' + rate + '%';
+  setKPI('#rYears', years, v => fmtNum(Math.round(v)));
+}
+function renderGoals(){
+  const box = $('#goalCards'); box.innerHTML = '';
+  if(!GOALS.length){
+    box.innerHTML = '<div class="empty" style="grid-column:1/-1"><b>No goals saved</b>Plan one above, then press "Save this as a goal" to track your progress against it.</div>';
+    $('#goalSummary').textContent = '';
+    return;
+  }
+  let saved = 0;
+  GOALS.forEach(g => {
+    saved += n(g.saved);
+    const p = g.target > 0 ? (n(g.saved) / n(g.target)) * 100 : 0;
+    const card = el('div','card');
+    card.innerHTML =
+      '<div class="card-h"><h3>'+esc(g.name)+'</h3></div>'+
+      '<div class="kpi-value" style="font-size:22px">'+inrShort(g.saved)+' <span class="kpi-sub" style="font-size:12px">of '+inrShort(g.target)+'</span></div>'+
+      '<div class="bar" style="margin:12px 0 6px"><i style="width:'+Math.min(100,Math.max(0,p))+'%"></i></div>'+
+      '<div class="kpi-sub">'+pct(p,1)+' funded · target '+prettyDate(g.date)+'</div>'+
+      '<table style="margin-top:10px"><tbody><tr><td class="dim">Monthly SIP</td><td class="r num">'+inr(g.sip)+'</td></tr></tbody></table>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;align-items:center">'+
+        '<input type="number" placeholder="Add ₹" data-addamt="'+g.id+'" style="flex:1">'+
+        '<button class="btn sm" data-addgoal="'+g.id+'">Add</button>'+
+        '<button class="linkbtn" data-delgoal="'+g.id+'">Delete</button></div>';
+    box.appendChild(card);
+  });
+  $('#goalSummary').textContent = GOALS.length + (GOALS.length===1?' goal · ':' goals · ') + inr(saved) + ' accumulated';
+  box.querySelectorAll('[data-addgoal]').forEach(b => b.onclick = () => {
+    const g = GOALS.find(x => x.id === b.dataset.addgoal);
+    const inp = box.querySelector('[data-addamt="'+b.dataset.addgoal+'"]');
+    const v = n(inp.value);
+    if(!(v > 0)) return void toast('Enter an amount to add.');
+    g.saved = n(g.saved) + v; save.goals(); renderGoals(); renderDashboard(); toast('Added ' + inr(v) + ' to ' + g.name + '.');
+  });
+  box.querySelectorAll('[data-delgoal]').forEach(b => b.onclick = () => {
+    if(!confirm('Delete this goal?')) return;
+    GOALS = GOALS.filter(x => x.id !== b.dataset.delgoal); save.goals(); renderGoals(); renderDashboard();
+  });
+}
+function renderGoalsView(){ renderSIP(); renderLumpsum(); renderGoalPlanner(); renderRetirement(); renderGoals(); }
+
+/* =====================================================================================
+   SECTION 8 — DASHBOARD
+   ===================================================================================== */
+function loanTotals(){
+  let outstanding = 0, emi = 0;
+  LOANS.forEach(l => { const s = loanStatus(l); outstanding += s.outstanding; if(s.remaining > 0) emi += s.emi; });
+  return { outstanding, emi };
+}
+function bestTaxNow(){
+  try{
+    const inputs = Object.assign({}, TAXP, {fy: TAXP.fy, age: TAXP.age});
+    const o = computeRegime('old', inputs), nw = computeRegime('new', inputs);
+    return { tax: Math.min(o.finalTax, nw.finalTax), regime: nw.finalTax <= o.finalTax ? 'new' : 'old' };
+  }catch(e){ return { tax:0, regime:'new' }; }
+}
+
+function renderDashboard(){
+  const spendThis = sum(monthExpenses(today()));
+  const totalBudget = CATEGORIES.reduce((a,c) => a + n(BUDGETS[c.id]), 0);
+  setKPI('#kSpend', spendThis);
+  $('#kSpendSub').textContent = totalBudget > 0
+    ? pct(spendThis/totalBudget*100, 0) + ' of your ' + inrShort(totalBudget) + ' budget'
+    : 'No budget set yet';
+
+  const lt = loanTotals();
+  setKPI('#kLoanBal', lt.outstanding, inrShort);
+  $('#kLoanSub').textContent = LOANS.length ? inr(lt.emi) + ' a month across ' + LOANS.length + (LOANS.length===1?' loan':' loans') : 'No loans saved';
+
+  const bt = bestTaxNow();
+  setKPI('#kTax', bt.tax, inrShort);
+  $('#kTaxSub').textContent = 'under the ' + bt.regime + ' regime · ' + (TAX_CONFIG[TAXP.fy] ? TAX_CONFIG[TAXP.fy].label : '');
+
+  const goalSaved = GOALS.reduce((a,g) => a + n(g.saved), 0);
+  const goalTarget = GOALS.reduce((a,g) => a + n(g.target), 0);
+  setKPI('#kGoals', goalSaved, inrShort);
+  $('#kGoalsSub').textContent = goalTarget > 0 ? pct(goalSaved/goalTarget*100,1) + ' of ' + inrShort(goalTarget) + ' targeted' : 'No goals saved';
+
+  // Cash flow
+  const income = n(SETTINGS.monthlyIncome);
+  const surplus = income - lt.emi - spendThis;
+  $('#cashflowBody').innerHTML =
+    '<tr><td class="dim">Take-home income</td><td class="r num">'+inr(income)+'</td></tr>'+
+    '<tr><td class="dim">Less: EMIs</td><td class="r num bad">−'+inr(lt.emi)+'</td></tr>'+
+    '<tr><td class="dim">Less: expenses this month</td><td class="r num bad">−'+inr(spendThis)+'</td></tr>'+
+    '<tr><td><b>Surplus</b></td><td class="r num '+(surplus>=0?'good':'bad')+'"><b>'+inr(surplus)+'</b></td></tr>';
+
+  // EMI-to-income ratio
+  const ratio = income > 0 ? (lt.emi / income) * 100 : 0;
+  $('#emiRatioTxt').textContent = income > 0 ? pct(ratio,1) : '—';
+  const bar = $('#emiRatioBar');
+  bar.className = 'bar ' + (ratio > 40 ? 'over' : ratio > 30 ? 'warn' : '');
+  bar.querySelector('i').style.width = Math.min(100, ratio) + '%';
+  $('#emiRatioNote').textContent = income <= 0 ? 'Enter your monthly income to see this.'
+    : ratio > 40 ? 'Above the 40% mark most lenders treat as comfortable.'
+    : 'Comfortably inside the 40% guideline.';
+
+  // Six-month combined chart
+  const labels = [], spend = [], emiSeries = [];
+  for(let i = 5; i >= 0; i--){
+    const d = addMonths(today(), -i);
+    labels.push(MONTHS[d.getMonth()] + " '" + String(d.getFullYear()).slice(2));
+    spend.push(sum(monthExpenses(d)));
+    emiSeries.push(lt.emi);
+  }
+  drawChart('chDash6', {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label:'Expenses', data:spend, backgroundColor:css('--gold'), borderRadius:8, order:2 },
+      { type:'line', label:'EMI commitment', data:emiSeries, borderColor:css('--rust'), borderWidth:2, pointRadius:0, tension:.1, order:1 }
+    ]},
+    options:{ scales:{ y:{ ticks:{callback:rupeeTick}, beginAtZero:true } },
+              plugins:{ tooltip:{ callbacks:{label: c => c.dataset.label + ': ' + inr(c.parsed.y)} } } }
+  });
+
+  // Budget mini-panel
+  const withBudget = CATEGORIES.filter(c => n(BUDGETS[c.id]) > 0);
+  const mList = monthExpenses(today());
+  $('#dashBudget').innerHTML = withBudget.length
+    ? withBudget.slice(0,6).map(c => budgetRow(c, sum(mList.filter(e => e.category === c.id)), n(BUDGETS[c.id]))).join('')
+    : '<div class="empty"><b>No budgets yet</b>Set monthly limits in Expenses to watch them here.</div>';
+
+  renderHealth({spendThis, income, emi:lt.emi, ratio, surplus, outstanding:lt.outstanding, tax:bt.tax, goalSaved});
+  renderBackupBadge();
+  updateStorageMeter();
+}
+
+/* Plain-English observations built from the user's own figures. */
+function renderHealth(d){
+  const obs = [];
+  if(d.income > 0 && d.emi > 0){
+    obs.push(d.ratio > 40
+      ? ['bad', 'Your EMI commitment is ' + pct(d.ratio,0) + ' of income, which is above the recommended 40%. Prepaying the costliest loan is usually the fastest way to bring this down.']
+      : ['good','Your EMI commitment is ' + pct(d.ratio,0) + ' of income, comfortably inside the 40% guideline.']);
+  }
+  if(d.income > 0){
+    const rate = (d.surplus / d.income) * 100;
+    obs.push(d.surplus < 0
+      ? ['bad',  'You are spending ' + inr(Math.abs(d.surplus)) + ' more than you earn this month. Look at the largest categories in Expenses first.']
+      : ['good', 'You are saving ' + pct(rate,0) + ' of your income this month, or ' + inr(d.surplus) + '.']);
+  } else {
+    obs.push(['warn','Add your monthly take-home income above to unlock the cash-flow and EMI-ratio checks.']);
+  }
+  const last = sum(monthExpenses(addMonths(today(), -1)));
+  if(last > 0){
+    const ch = ((d.spendThis - last) / last) * 100;
+    obs.push(Math.abs(ch) < 5
+      ? ['good','Spending is steady, within 5% of last month.']
+      : [ch > 0 ? 'bad' : 'good', 'Spending is ' + pct(Math.abs(ch),0) + (ch > 0 ? ' higher' : ' lower') + ' than last month.']);
+  }
+  const over = CATEGORIES.filter(c => n(BUDGETS[c.id]) > 0 && sum(monthExpenses(today()).filter(e => e.category === c.id)) > n(BUDGETS[c.id]));
+  if(over.length) obs.push(['bad', over.length + ' ' + (over.length===1?'category is':'categories are') + ' over budget this month: ' + over.map(c => c.name).join(', ') + '.']);
+  if(d.tax > 0 && d.income > 0) obs.push(['warn','Set aside roughly ' + inr(d.tax/12) + ' a month for tax, based on your current tax inputs.']);
+  if(!GOALS.length) obs.push(['warn','No savings goals yet. Even one named goal makes the surplus easier to direct.']);
+
+  const colour = k => k === 'good' ? css('--green') : k === 'bad' ? css('--rust') : css('--gold');
+  $('#healthPanel').innerHTML = obs.slice(0,5).map(o =>
+    '<div class="obs"><span class="dot" style="background:'+colour(o[0])+'"></span><span>'+esc(o[1])+'</span></div>').join('')
+    || '<div class="empty">Add a few expenses to see observations here.</div>';
+}
+
+/* =====================================================================================
+   SECTION 9 — DATA MANAGEMENT
+   ===================================================================================== */
+function storageBytes(){
+  let total = 0;
+  for(let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    total += (k.length + (localStorage.getItem(k) || '').length) * 2;   // UTF-16
+  }
+  return total;
+}
+const STORAGE_LIMIT = 5 * 1024 * 1024;   // browsers allow roughly 5 MB per origin
+function updateStorageMeter(){
+  const used = storageBytes();
+  const p = Math.min(100, (used / STORAGE_LIMIT) * 100);
+  [['#storageBar','#storagePct'], ['#storageBar2', null]].forEach(pair => {
+    const bar = $(pair[0]); if(!bar) return;
+    bar.className = 'bar ' + (p > 80 ? 'over' : p > 60 ? 'warn' : '');
+    bar.querySelector('i').style.width = Math.max(2, p) + '%';
+  });
+  if($('#storagePct')) $('#storagePct').textContent = (p > 0 && p < 0.1) ? '<0.1%' : p.toFixed(1) + '%';
+  if($('#storageTxt')) $('#storageTxt').textContent = (used/1024).toFixed(0) + ' KB of about 5 MB · ' + p.toFixed(1) + '%';
+  if($('#storageNote')) $('#storageNote').textContent = p > 80
+    ? 'Storage is nearly full. Export a backup and delete older expenses.'
+    : 'Plenty of room left.';
+  if($('#schemaTxt')) $('#schemaTxt').textContent = SCHEMA_VERSION;
+}
+function renderBackupBadge(){
+  const box = $('#dashBackupWarn');
+  const txt = $('#lastBackupTxt');
+  if(!META.lastBackup){
+    if(txt) txt.textContent = 'Never backed up.';
+    box.innerHTML = '<div class="note warn" style="margin-bottom:16px">Last backed up: <b>never</b>. Everything here lives only in this browser — press "Back up now" to save a copy you control.</div>';
+    return;
+  }
+  const d = new Date(META.lastBackup);
+  const days = Math.floor((today() - d) / 86400000);
+  if(txt) txt.textContent = 'Last backed up: ' + prettyDate(iso(d)) + ' (' + days + ' days ago).';
+  box.innerHTML = days > 30
+    ? '<div class="note warn" style="margin-bottom:16px">Last backed up: <b>'+prettyDate(iso(d))+'</b>, '+days+' days ago. Time for a fresh copy.</div>'
+    : '<div class="note" style="margin-bottom:16px">Last backed up: <b>'+prettyDate(iso(d))+'</b> — '+days+' days ago.</div>';
+}
+
+function exportAll(){
+  const payload = {
+    app:'MoneyDesk', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(),
+    settings:SETTINGS, expenses:EXPENSES, categories:CATEGORIES, budgets:BUDGETS,
+    loans:LOANS, goals:GOALS, taxProfile:TAXP, taxConfig:TAX_CONFIG
+  };
+  download('moneydesk-backup-' + iso(today()) + '.json', JSON.stringify(payload, null, 2), 'application/json');
+  META.lastBackup = new Date().toISOString(); save.meta(); renderBackupBadge();
+  toast('Backup downloaded.');
+}
+function exportExpensesCSV(){
+  if(!EXPENSES.length) return void toast('No expenses to export yet.');
+  const rows = [['Date','Category','Note','Tag','Payment mode','Amount (INR)','Recurring']];
+  EXPENSES.slice().sort((a,b) => a.date.localeCompare(b.date)).forEach(e =>
+    rows.push([e.date, catById(e.category).name, e.note||'', e.tag||'', e.mode, n(e.amount).toFixed(2), e.recurring?'Yes':'No']));
+  download('moneydesk-expenses-' + iso(today()) + '.csv', toCSV(rows), 'text/csv;charset=utf-8');
+  toast('CSV downloaded.');
+}
+let pendingImport = null;
+function handleImportFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const data = JSON.parse(reader.result);
+      if(!data || data.app !== 'MoneyDesk') throw new Error('not a MoneyDesk backup');
+      pendingImport = data;
+      $('#importSummary').innerHTML = 'This backup holds <b>' + (data.expenses||[]).length + ' expenses</b>, <b>' +
+        (data.loans||[]).length + ' loans</b> and <b>' + (data.goals||[]).length + ' goals</b>, exported on ' +
+        prettyDate(iso(new Date(data.exportedAt || Date.now()))) + '.';
+      openModal('mImport');
+    }catch(e){
+      toast('That file is not a MoneyDesk backup.');
+    }
+  };
+  reader.onerror = () => toast('Could not read that file.');
+  reader.readAsText(file);
+}
+function applyImport(){
+  const d = pendingImport; if(!d) return;
+  SETTINGS   = Object.assign({}, DEFAULT_SETTINGS, d.settings || {});
+  EXPENSES   = Array.isArray(d.expenses) ? d.expenses : [];
+  CATEGORIES = Array.isArray(d.categories) && d.categories.length ? d.categories : structuredCloneSafe(DEFAULT_CATEGORIES);
+  BUDGETS    = d.budgets || {};
+  LOANS      = Array.isArray(d.loans) ? d.loans : [];
+  GOALS      = Array.isArray(d.goals) ? d.goals : [];
+  TAXP       = Object.assign({}, DEFAULT_TAXPROFILE, d.taxProfile || {});
+  if(d.taxConfig && d.taxConfig.meta) TAX_CONFIG = d.taxConfig;
+  if(!TAX_CONFIG[TAXP.fy]) TAXP.fy = TAX_CONFIG.meta.defaultFY;
+  Object.values(save).forEach(fn => fn());
+  closeModal('mImport'); closeModal('mData');
+  bootUI(); toast('Backup restored.');
+}
+function wipeAll(){
+  Object.values(K).forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
+  loadAll(); closeModal('mWipe'); closeModal('mData'); bootUI();
+  toast('All data cleared.');
+}
+
+/* =====================================================================================
+   SECTION 10 — WIRING & STARTUP
+   ===================================================================================== */
+function syncSeg(sel, attr, value){
+  $$(sel + ' button').forEach(b => b.classList.toggle('on', b.dataset[attr] === value));
+}
+function showView(name){
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  $$('#navMain .navbtn, #navTabs button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  const titles = {dashboard:'Dashboard', expenses:'Expenses', loans:'Loans & EMI', tax:'Income tax', goals:'Goals & investments'};
+  $('#viewTitle').textContent = titles[name] || name;
+  window.scrollTo({top:0, behavior: reduceMotion ? 'auto' : 'smooth'});
+  // Charts sized while hidden render at zero height, so redraw on entry.
+  if(name === 'expenses') renderExpenses();
+  if(name === 'loans') renderLoanCalc();
+  if(name === 'tax') renderTax();
+  if(name === 'goals') renderGoalsView();
+  if(name === 'dashboard') renderDashboard();
+}
+function applyTheme(){
+  const dark = SETTINGS.theme === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  $('#btnTheme').textContent = dark ? 'Light mode' : 'Dark mode';
+}
+
+function wire(){
+  // Navigation
+  $$('#navMain .navbtn, #navTabs button').forEach(b => b.onclick = () => showView(b.dataset.view));
+
+  // Theme
+  $('#btnTheme').onclick = () => {
+    SETTINGS.theme = SETTINGS.theme === 'dark' ? 'light' : 'dark';
+    save.settings(); applyTheme();
+    // Redraw charts so they pick up the new ink/line colours.
+    const active = $('.view.active').id.replace('view-','');
+    showView(active);
+  };
+
+  // Modals: any [data-close] closes its own modal; clicking the backdrop closes too.
+  $$('.modal').forEach(m => {
+    m.addEventListener('click', e => { if(e.target === m) m.classList.remove('open'); });
+    m.querySelectorAll('[data-close]').forEach(b => b.onclick = () => m.classList.remove('open'));
+  });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') $$('.modal.open').forEach(m => m.classList.remove('open')); });
+
+  // ---- Expenses -----------------------------------------------------------------
+  $('#btnAddExpense').onclick = addExpense;
+  $('#exAmt').addEventListener('keydown', e => { if(e.key === 'Enter') addExpense(); });
+  ['#fFrom','#fTo','#fCat','#fMode','#fSearch'].forEach(s =>
+    $(s).addEventListener('input', () => { view.page = 1; renderTable(); }));
+  $('#expBody').addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b) return;
+    const act = b.dataset.act;
+    if(act === 'edit') startEdit(b.dataset.id);
+    if(act === 'del') deleteExpense(b.dataset.id);
+    if(act === 'commit') commitEdit(b.dataset.id);
+    if(act === 'cancel'){ editingId = null; renderTable(); }
+  });
+  $$('#tblExpenses th.sortable').forEach(th => th.onclick = () => {
+    const k = th.dataset.sort;
+    if(view.sortBy === k) view.sortDir *= -1; else { view.sortBy = k; view.sortDir = k === 'amount' ? -1 : -1; }
+    renderTable();
+  });
+  $('#pgPrev').onclick = () => { view.page = Math.max(1, view.page-1); renderTable(); };
+  $('#pgNext').onclick = () => { view.page++; renderTable(); };
+  $$('#segPeriod button').forEach(b => b.onclick = () => {
+    view.period = b.dataset.period; view.page = 1;
+    syncSeg('#segPeriod','period',view.period); renderExpenses();
+  });
+  $('#btnExportCsv').onclick = exportExpensesCSV;
+  $('#btnManageCats').onclick = () => { renderCatManager(); openModal('mCats'); };
+  $('#btnAddCat').onclick = () => {
+    const name = $('#newCatName').value.trim();
+    if(!name) return void toast('Give the category a name.');
+    CATEGORIES.push({ id:uid(), name:name, color:$('#newCatColor').value, icon:$('#newCatIcon').value.trim() || '●' });
+    save.categories(); $('#newCatName').value = '';
+    refreshSelectors(); renderCatManager(); renderExpenses();
+    toast('Category added.');
+  };
+
+  // ---- Loans --------------------------------------------------------------------
+  const link = (numSel, rangeSel) => {
+    const a = $(numSel), b = $(rangeSel);
+    a.addEventListener('input', () => { b.value = Math.min(b.max, Math.max(b.min, n(a.value))); renderLoanCalc(); });
+    b.addEventListener('input', () => { a.value = b.value; renderLoanCalc(); });
+  };
+  link('#lnAmt','#rgAmt'); link('#lnRate','#rgRate'); link('#lnTen','#rgTen');
+  $$('#segTenure button').forEach(b => b.onclick = () => {
+    const wasMonths = tenureUnit === 'months';
+    tenureUnit = b.dataset.unit;
+    syncSeg('#segTenure','unit',tenureUnit);
+    $('#lblTenUnit').textContent = tenureUnit;
+    const cur = n($('#lnTen').value);
+    if(wasMonths && tenureUnit === 'years'){ $('#lnTen').value = Math.max(1, Math.round(cur/12)); $('#rgTen').max = 50; }
+    if(!wasMonths && tenureUnit === 'months'){ $('#lnTen').value = Math.round(cur*12); $('#rgTen').max = 360; }
+    $('#rgTen').value = Math.min(n($('#rgTen').max), n($('#lnTen').value));
+    renderLoanCalc();
+  });
+  ['#ppLump','#ppMonth','#ppExtra'].forEach(s => $(s).addEventListener('input', () => { renderPrepay(); renderAmort(); }));
+  $('#amortWithPre').addEventListener('change', renderAmort);
+  $$('#segAmort button').forEach(b => b.onclick = () => { amortMode = b.dataset.mode; syncSeg('#segAmort','mode',amortMode); renderAmort(); });
+  $('#btnAmortCsv').onclick = downloadAmortCSV;
+  $('#btnSaveLoan').onclick = () => {
+    if(!validateLoan()) return void toast('Fix the highlighted fields first.');
+    $('#slName').value = ''; $('#slStart').value = iso(today());
+    openModal('mLoan');
+  };
+  $('#btnLoanConfirm').onclick = () => {
+    const {amount, rate, months} = loanInputs();
+    LOANS.push({ id:uid(), name:$('#slName').value.trim() || ($('#slType').value + ' loan'), type:$('#slType').value,
+                 amount, rate, months, start:$('#slStart').value || iso(today()) });
+    save.loans(); closeModal('mLoan'); renderLoans(); renderDashboard(); toast('Loan saved.');
+  };
+
+  // ---- Tax ----------------------------------------------------------------------
+  const taxFields = ['#tGross','#tOther','#tHP','#tCG','#d80C','#d80CCD1B','#d80Dself','#d80Dpar','#d80Dpar60',
+                     '#d80E','#d80G','#d80TT','#d24b','#dPT','#hBasic','#hRecv','#hRent','#hMetro','#nNPS'];
+  taxFields.forEach(s => $(s).addEventListener('input', renderTax));
+  $('#taxFY').addEventListener('change', () => { TAXP.fy = $('#taxFY').value; save.tax(); renderTax(); });
+  $('#taxAge').addEventListener('change', () => { TAXP.age = $('#taxAge').value; save.tax(); renderTax(); });
+  $('#wiSlider').addEventListener('input', renderTax);
+  $('#btnTaxSettings').onclick = () => { renderTaxEditor(); openModal('mTax'); };
+  $('#btnTaxSave').onclick = saveTaxEditor;
+  $('#btnTaxReset').onclick = () => {
+    if(!confirm('Restore the tax slabs and limits that shipped with the app?')) return;
+    TAX_CONFIG = structuredCloneSafe(TAX_CONFIG_DEFAULT);
+    save.taxcfg(); renderTaxEditor(); renderTax(); toast('Tax settings reset to defaults.');
+  };
+
+  // ---- Goals --------------------------------------------------------------------
+  ['#sipAmt','#sipRate','#sipYrs'].forEach(s => $(s).addEventListener('input', renderSIP));
+  ['#lsAmt','#lsRate','#lsYrs'].forEach(s => $(s).addEventListener('input', renderLumpsum));
+  ['#gpTarget','#gpDate','#gpRate','#gpInfl'].forEach(s => $(s).addEventListener('input', renderGoalPlanner));
+  ['#rAge','#rRet','#rExp','#rInfl','#rRate'].forEach(s => $(s).addEventListener('input', renderRetirement));
+  $('#btnSaveGoal').onclick = () => { $('#sgName').value = ''; $('#sgSip').value = Math.round(renderGoalPlanner().sip); openModal('mGoal'); };
+  $('#btnGoalConfirm').onclick = () => {
+    const p = renderGoalPlanner();
+    GOALS.push({ id:uid(), name:$('#sgName').value.trim() || 'Untitled goal', target:Math.round(p.inflated),
+                 saved:Math.max(0, n($('#sgSaved').value)), sip:Math.max(0, n($('#sgSip').value)),
+                 date:$('#gpDate').value || iso(addMonths(today(), p.months)) });
+    save.goals(); closeModal('mGoal'); renderGoals(); renderDashboard(); toast('Goal saved.');
+  };
+
+  // ---- Dashboard ----------------------------------------------------------------
+  $('#inpIncome').addEventListener('input', () => {
+    const v = n($('#inpIncome').value);
+    if(v < 0) return void setErr('#inpIncome','#errIncome','Income cannot be negative.');
+    setErr('#inpIncome','#errIncome','');
+    SETTINGS.monthlyIncome = v; save.settings(); renderDashboard();
+  });
+
+  // ---- Data management ----------------------------------------------------------
+  $('#btnData').onclick = () => { updateStorageMeter(); renderBackupBadge(); openModal('mData'); };
+  $('#btnQuickBackup').onclick = exportAll;
+  $('#btnExport').onclick = exportAll;
+  $('#btnExportCsv2').onclick = exportExpensesCSV;
+  $('#btnImport').onclick = () => $('#fileImport').click();
+  $('#fileImport').addEventListener('change', e => { if(e.target.files[0]) handleImportFile(e.target.files[0]); e.target.value = ''; });
+  $('#btnImportConfirm').onclick = applyImport;
+  $('#btnClear').onclick = () => { $('#wipeConfirm').value = ''; $('#btnWipeConfirm').disabled = true; openModal('mWipe'); };
+  $('#wipeConfirm').addEventListener('input', e => { $('#btnWipeConfirm').disabled = e.target.value.trim() !== 'DELETE'; });
+  $('#btnWipeConfirm').onclick = wipeAll;
+}
+
+/* Push stored values back into every form control, then render everything. */
+function bootUI(){
+  applyTheme();
+  $('#appName').textContent = SETTINGS.appName || 'MoneyDesk';
+  document.title = (SETTINGS.appName || 'MoneyDesk') + ' — Personal Finance Workbench';
+
+  refreshSelectors();
+  $('#exDate').value = iso(today());
+  $('#inpIncome').value = n(SETTINGS.monthlyIncome) || '';
+
+  // Tax form
+  const fyKeys = Object.keys(TAX_CONFIG).filter(k => k !== 'meta').sort().reverse();
+  fillSelect('#taxFY', fyKeys.map(k => ({label: TAX_CONFIG[k].label, value:k})));
+  $('#taxFY').value = TAXP.fy;
+  $('#taxAge').value = TAXP.age;
+  [['#tGross','gross'],['#tOther','other'],['#tHP','hp'],['#tCG','cg'],['#d80C','d80C'],['#d80CCD1B','d80CCD1B'],
+   ['#d80Dself','d80Dself'],['#d80Dpar','d80Dpar'],['#d80Dpar60','d80Dpar60'],['#d80E','d80E'],['#d80G','d80G'],
+   ['#d80TT','d80TT'],['#d24b','d24b'],['#dPT','dPT'],['#hBasic','hBasic'],['#hRecv','hRecv'],['#hRent','hRent'],
+   ['#hMetro','hMetro'],['#nNPS','nNPS']].forEach(([sel, key]) => { if($(sel)) $(sel).value = TAXP[key]; });
+
+  if(!$('#gpDate').value) $('#gpDate').value = iso(addMonths(today(), 60));
+
+  materialiseRecurring();
+  renderExpenses();
+  renderLoanCalc();
+  renderLoans();
+  renderTax();
+  renderGoalsView();
+  renderDashboard();
+  updateStorageMeter();
+}
+
+// ---- Go ------------------------------------------------------------------------------
+try{
+  loadAll();
+  wire();
+  bootUI();
+  showView('dashboard');
+}catch(err){
+  console.error(err);
+  document.body.innerHTML = '<div style="max-width:520px;margin:80px auto;padding:24px;font-family:Poppins,sans-serif">'+
+    '<h2>MoneyDesk could not start</h2><p>Something in the saved data could not be read. Open your browser console for details, '+
+    'or clear this site\'s storage to start fresh. Your backup .json file, if you have one, can be imported afterwards.</p>'+
+    '<pre style="white-space:pre-wrap;font-size:12px;color:#E2582B">'+esc(err && err.message)+'</pre></div>';
+}
+</script>
+</body>
+</html>
